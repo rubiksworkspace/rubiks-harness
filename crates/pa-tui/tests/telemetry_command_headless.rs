@@ -206,7 +206,7 @@ impl StubSettings {
             return ("off", format!("forced off by {var}"));
         }
         match *self.telemetry_enabled.lock().expect("telemetry lock") {
-            None => ("on", "on by default".to_string()),
+            None => ("off", "off by default".to_string()),
             Some(true) => ("on", "turned on in settings".to_string()),
             Some(false) => ("off", "turned off in settings".to_string()),
         }
@@ -448,7 +448,7 @@ fn telemetry_status_renders_the_report() {
     steps.extend(submit("/telemetry maybe"));
     let all = run_plan(Arc::clone(&settings), steps).join("\n");
     assert!(
-        all.matches("Telemetry is on (on by default).").count() >= 2,
+        all.matches("Telemetry is off (off by default).").count() >= 2,
         "bare and status both report:\n{all}"
     );
     assert!(all.contains("Installation id: stub-id"), "{all}");

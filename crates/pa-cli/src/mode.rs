@@ -348,14 +348,15 @@ pub(crate) mod tests {
         });
     }
 
-    /// A fresh install resolves enabled (the TS posture) with the env overrides cleared.
+    /// A fresh install resolves disabled with the env overrides cleared:
+    /// this build collects nothing unless telemetry is turned on.
     #[test]
-    fn telemetry_defaults_on() {
+    fn telemetry_defaults_off() {
         with_clean_telemetry_env(|| {
             let dir = tempfile::tempdir().unwrap();
             let agent_dir = dir.path().join("agent");
             let settings = pa_core::settings::SettingsManager::create(dir.path(), agent_dir);
-            assert!(!telemetry_disabled(&settings));
+            assert!(telemetry_disabled(&settings));
         });
     }
 }

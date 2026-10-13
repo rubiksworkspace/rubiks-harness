@@ -381,6 +381,10 @@ mod tests {
         let dir = tempfile::TempDir::new().unwrap();
         let agent_dir = dir.path().join("agent");
         std::fs::create_dir_all(&agent_dir).unwrap();
+        // Telemetry is off by default; this checks per-run reporting once on.
+        pa_core::settings::SettingsManager::create(dir.path(), &agent_dir)
+            .set_telemetry_enabled(true)
+            .unwrap();
         let telemetry = CliInteractionTelemetry::new(dir.path().to_path_buf(), agent_dir.clone());
         telemetry.scroll_used("page", false).await;
         telemetry.hyperlinks_active(true).await;

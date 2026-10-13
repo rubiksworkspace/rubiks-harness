@@ -46,8 +46,7 @@ pub use classify::provider_category;
 mod status;
 use classify::{error_category, model_category, opt_value, run_outcome};
 pub use status::{
-    set_telemetry_enabled_text, telemetry_endpoint, telemetry_status_text, telemetry_switch,
-    TelemetrySwitch,
+    set_telemetry_enabled_text, telemetry_status_text, telemetry_switch, TelemetrySwitch,
 };
 
 #[cfg(test)]
@@ -1121,9 +1120,9 @@ fn stop_reason(last_assistant: Option<&AssistantMessage>) -> &'static str {
     }
 }
 
-/// Build the product telemetry client from settings: the Prime Intellect
-/// analytics sink (the TS endpoint and wire format; none in debug builds,
-/// see [`telemetry_endpoint`]) plus the local JSONL transparency mirror
+/// Build the product telemetry client from settings. It has no remote sink:
+/// this build never sends events to the Prime Intellect analytics endpoint.
+/// The only sink is the local JSONL transparency mirror
 /// (default on, `telemetry.localMirror` disables it), behind the live
 /// [`telemetry_switch`] re-read before every delivery pass. Never fails: a
 /// broken install id falls back to a no-op client (TS parity: capture
@@ -1138,12 +1137,6 @@ pub fn build_client(
         Ok(id) => {
             config.install_id = id;
             let mut sinks: Vec<Arc<dyn pa_telemetry::TelemetrySink>> = Vec::new();
-            if let Some(endpoint) = telemetry_endpoint() {
-                sinks.push(Arc::new(pa_telemetry::AnalyticsSink::with_http_builder(
-                    endpoint,
-                    pa_ai::utils::tls::http_client_builder(),
-                )));
-            }
             let local_mirror = settings
                 .settings()
                 .telemetry

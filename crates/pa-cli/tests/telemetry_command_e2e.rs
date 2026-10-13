@@ -39,7 +39,7 @@ fn status_on_and_off_round_trip() {
 
     let (code, out) = run(sandbox, &["telemetry"], &[]);
     assert_eq!(code, Some(0), "{out}");
-    assert!(out.contains("Telemetry is on (on by default)."), "{out}");
+    assert!(out.contains("Telemetry is off (off by default)."), "{out}");
     assert!(out.contains("Installation id: not created yet"), "{out}");
 
     let (code, out) = run(sandbox, &["telemetry", "off"], &[]);
