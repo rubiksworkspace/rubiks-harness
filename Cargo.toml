@@ -21,7 +21,7 @@ crossterm = { path = "vendor/crossterm" }
 [workspace.package]
 version = "0.10.0"
 edition = "2021"
-license = "MIT"
+license = "GPL-3.0-or-later"
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }

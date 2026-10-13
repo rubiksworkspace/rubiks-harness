@@ -17,7 +17,7 @@ class PrimeAgent < Formula
   url "https://github.com/PrimeIntellect-ai/prime-agent/releases/download/v1.0.0/prime-agent-1.0.0-src.tar.gz"
   # TODO: replace with the v1.0.0 src-tarball sha256 from the release SHA256SUMS
   sha256 "0000000000000000000000000000000000000000000000000000000000000000"
-  license "MIT"
+  license "GPL-3.0-or-later"
 
   livecheck do
     url "https://github.com/PrimeIntellect-ai/prime-agent/releases/latest"

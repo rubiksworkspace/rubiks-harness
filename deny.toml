@@ -30,6 +30,8 @@ version = 2
 # The exact set carried by the dependency graph (verified with
 # `cargo deny check licenses`); unmatched entries are removed on bump.
 allow = [
+  # This workspace and the Zed CLI vendored in vendor/zed-cli.
+  "GPL-3.0-or-later",
   "Apache-2.0",
   "Apache-2.0 WITH LLVM-exception",
   "MIT",

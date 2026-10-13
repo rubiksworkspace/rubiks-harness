@@ -124,7 +124,13 @@ Start with a GitHub Discussion for [general questions](https://github.com/PrimeI
 
 ## License
 
-Prime Agent is fully open source and released under the [MIT License](LICENSE).
+This branch of Prime Agent is released under the [GNU General Public License v3.0 or later](LICENSE)
+(GPL-3.0-or-later), because it includes Zed's command-line interface, which is GPL-3.0-or-later
+(see [vendor/zed-cli](vendor/zed-cli/README.md)).
+
+The Prime Agent code it builds on was released under the MIT License; that notice is kept in
+[LICENSE-MIT](LICENSE-MIT) as the MIT License requires. Parts of the vendored Zed code are
+Apache-2.0 ([vendor/zed-cli/LICENSE-APACHE](vendor/zed-cli/LICENSE-APACHE)).
 
 ## Citation
 
