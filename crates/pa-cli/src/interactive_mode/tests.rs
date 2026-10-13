@@ -369,6 +369,10 @@ async fn report_an_aborted_flow_once() {
     let dir = tempfile::TempDir::new().expect("temp dir");
     let agent_dir = dir.path().join("agent");
     std::fs::create_dir_all(&agent_dir).expect("agent dir");
+    // Telemetry is off by default; this checks the report once it is on.
+    pa_core::settings::SettingsManager::create(dir.path(), &agent_dir)
+        .set_telemetry_enabled(true)
+        .unwrap();
     let sink = SettingsOnboardingSink {
         cwd: dir.path().to_path_buf(),
         agent_dir: agent_dir.clone(),
