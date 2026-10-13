@@ -178,6 +178,7 @@ pub fn handle_public_command(args: &[String]) -> PublicCommandResult {
         "update" => run_update(&rest),
         "model" => rewrite_nested_command("model", "list", "--list-models", &rest),
         "session" => rewrite_nested_command("session", "export", "--export", &rest),
+        "data" => handled_with_exit(crate::data_command::run_data_command(&rest)),
         "prompt" => handled_with_exit(crate::prompt_command::run_prompt_command(&rest)),
         "factory" => handled_with_exit(crate::factory_command::run_factory_command(&rest)),
         "config" => {

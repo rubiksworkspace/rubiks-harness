@@ -240,6 +240,48 @@ pub const COMMAND_SPECS: &[CommandSpec] = &[
         "session export <file> [output]",
         "Export a saved session to HTML",
     ),
+    CommandSpec::new(
+        &["data"],
+        "data [sessions|show|stores]",
+        "Browse saved sessions and harness data",
+    )
+    .description(
+        "Lists saved sessions, shows one session's chat, thinking, tool calls, usage, events or \
+raw JSONL records, and lists where the harness keeps its data. Times and dates are UTC. Every \
+command takes --json.",
+    )
+    .examples(&[
+        "data sessions --search \"vault\" --since 2026-10-01",
+        "data show 9e291328986e --kind tools",
+        "data show 9e291328986e --kind raw --json",
+    ]),
+    CommandSpec::new(
+        &["data", "sessions"],
+        "data sessions [--search TEXT] [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--json]",
+        "List saved sessions, newest first",
+    )
+    .options(&[
+        "-s, --search <text>  Match id, title, folder, model or any message text",
+        "--since <date>       Created on or after this UTC day",
+        "--until <date>       Created on or before this UTC day",
+        "--json               Print JSON",
+    ]),
+    CommandSpec::new(
+        &["data", "show"],
+        "data show <id> [--kind KIND] [--search TEXT] [--full] [--json]",
+        "Show one session's data",
+    )
+    .options(&[
+        "-k, --kind <kind>    all (default), chat, thinking, tools, usage, events or raw",
+        "-s, --search <text>  Keep items whose label or text matches",
+        "--full               Print long items in full",
+        "--json               Print JSON",
+    ]),
+    CommandSpec::new(
+        &["data", "stores"],
+        "data stores [--json]",
+        "List where harness data is stored, with sizes",
+    ),
     CommandSpec::new(&["config"], "config", "Configure package resources"),
     CommandSpec::new(
         &["factory"],
