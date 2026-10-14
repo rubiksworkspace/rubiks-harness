@@ -345,7 +345,7 @@ say() { printf '%s%s%s\n' "$SAY_DIM" "$*" "$SAY_RESET" >&3; }
 # The program text is awk, not shell: its "$PRIME_AGENT_UI_DIR" expands later.
 # shellcheck disable=SC2016
 banner_awk='# BANNER_AWK_BEGIN
-# The installer banner: the TUI first-run splash (crates/pa-tui/src/
+# The installer banner: the TUI first-run splash, the Rubiks cube mark (crates/pa-tui/src/
 # onboarding.rs mark_rows + draw_field), ported cell for cell so the same
 # frame at the same width draws the same canvas; the parity test in that
 # file runs this program (-v parity=1) against the Rust renderer.
@@ -384,10 +384,11 @@ function field(frame,   x, y, k, hash, cx, cy, contour, hy, si, seg, t, base, wa
     }
   }
   for (y = 0; y < MH; y++) {
+    if (!(y in LOGO)) continue
     n = split(LOGO[y], parts, "|")
     for (i = 1; i <= n; i++) {
       eq = index(parts[i], "=")
-      put(LI + substr(parts[i], 1, eq - 1), y, substr(parts[i], eq + 1), "T", 8)
+      put(LI + substr(parts[i], 1, eq - 1), y, substr(parts[i], eq + 1), LT[y], 8)
     }
   }
 }
@@ -464,19 +465,19 @@ function draw(n,   i) {
 }
 BEGIN {
   ESC = "\033"
-  MH = 7; LI = 5; QX0 = 5; QX1 = 26
-  LOGO[0] = "17=▗|18=▄|19=▄|20=█|21=▀"
-  LOGO[1] = "3=█|4=█|5=█|6=▄|14=▗|15=▄|16=█|17=█|18=█|19=▀"
-  LOGO[2] = "2=▗|3=█|4=▛|5=▐|6=█|7=▙|11=▗|12=▄|13=█|14=▀|15=▗|16=█|17=▀"
-  LOGO[3] = "1=▗|2=█|3=▛|5=▟|6=█|7=█|8=▙|9=▄|10=█|11=█|12=▛|14=▟|15=▛"
-  LOGO[4] = "1=▗|2=▟|3=▌|5=▐|6=█|7=█|8=█|9=▛|10=▘|11=▗|12=▄|13=█|14=▖"
-  LOGO[5] = "0=▟|1=█|2=█|3=█|4=▄|7=▄|8=▄|9=▟|10=█|11=█|12=█|13=▀"
-  LOGO[6] = "0=▜|1=█|2=▛|3=▀|4=▘|7=▜|8=█|9=▛|10=▀|11=▘"
+  MH = 7; LI = 5; QX0 = 5; QX1 = 18
+  LOGO[0] = "0=▄|1=▄|2=▄|3=▄|5=▄|6=▄|7=▄|8=▄|10=▄|11=▄|12=▄|13=▄"; LT[0] = "A"
+  LOGO[1] = "0=█|1=█|2=█|3=█|5=█|6=█|7=█|8=█|10=█|11=█|12=█|13=█"; LT[1] = "A"
+  LOGO[2] = "0=▄|1=▄|2=▄|3=▄|5=▄|6=▄|7=▄|8=▄|10=▄|11=▄|12=▄|13=▄"; LT[2] = "E"
+  LOGO[3] = "0=█|1=█|2=█|3=█|5=█|6=█|7=█|8=█|10=█|11=█|12=█|13=█"; LT[3] = "E"
+  LOGO[4] = "0=▄|1=▄|2=▄|3=▄|5=▄|6=▄|7=▄|8=▄|10=▄|11=▄|12=▄|13=▄"; LT[4] = "W"
+  LOGO[5] = "0=█|1=█|2=█|3=█|5=█|6=█|7=█|8=█|10=█|11=█|12=█|13=█"; LT[5] = "W"
   if (color == 1) {
     RESET = ESC "[0m"; BOLD = ESC "[1m"; ITAL = ESC "[3m"; TX = ESC "[39m"
-    DIM = ESC "[38;2;113;113;122m"; AC = ESC "[38;2;124;111;175m"
-    TONE["T"] = ESC "[39m"; TONE["D"] = DIM; TONE["B"] = ESC "[38;2;82;82;91m"
-    TONE["A"] = AC; TONE["L"] = ESC "[38;2;56;189;248m"; TONE["W"] = ESC "[38;2;245;158;11m"
+    DIM = ESC "[38;2;119;115;109m"; AC = ESC "[38;2;106;159;209m"
+    TONE["T"] = ESC "[39m"; TONE["D"] = DIM; TONE["B"] = ESC "[38;2;58;56;52m"
+    TONE["A"] = AC; TONE["L"] = ESC "[38;2;139;184;224m"; TONE["W"] = ESC "[38;2;245;219;94m"
+    TONE["E"] = ESC "[38;2;236;138;125m"
   }
   W = width + 0
   if (parity == 1) {

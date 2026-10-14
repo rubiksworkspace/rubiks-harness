@@ -28,7 +28,7 @@ pub struct AppOptions {
 impl Default for AppOptions {
     fn default() -> Self {
         Self {
-            theme: "prime".to_string(),
+            theme: "rubiks".to_string(),
             replay_delay_ms: 0,
             auto_exit_ms: None,
             panic_after_frame: false,
@@ -41,8 +41,11 @@ pub fn load_theme(name: &str) -> Theme {
     let mode = crate::theme::detect_color_mode();
     // The default brand theme when the caller passes none (empty) or an
     // unknown name; only known builtins resolve.
-    let known = ["prime", "dark", "light"];
-    let name = if known.contains(&name) { name } else { "prime" };
+    let name = if pa_types::themes::BUILTIN_THEME_NAMES.contains(&name) {
+        name
+    } else {
+        "rubiks"
+    };
     Theme::builtin(name, mode)
 }
 

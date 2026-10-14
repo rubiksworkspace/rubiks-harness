@@ -127,13 +127,16 @@ impl AgentSessionEngine {
         // `prepareTurnRetry` / `clearTurnRetry` ride the retry events: the
         // parked id makes the retried call reuse the failed attempt's
         // idempotency key).
-        let (telemetry, semantic_edges) = {
+        let (telemetry, semantic_edges, research) = {
             let guard = self.session.blocking_lock();
             (
                 guard.as_deref().and_then(|engine| engine.telemetry.clone()),
                 guard
                     .as_deref()
                     .and_then(|engine| engine.session.semantic_edges()),
+                guard
+                    .as_deref()
+                    .and_then(|engine| engine.session.research_log()),
             )
         };
         // The failover-captured primary target state (TS `_backupModel`):
@@ -273,6 +276,7 @@ impl AgentSessionEngine {
                     let mut emit = emit_cell.borrow_mut();
                     let telemetry = telemetry.clone();
                     let semantic_edges = semantic_edges.clone();
+                    let research = research.clone();
                     async move {
                         // TS parks the id at `auto_retry_start` and clears
                         // it at the settle (`_resolveRetry`), so a
@@ -294,6 +298,9 @@ impl AgentSessionEngine {
                         if let Some(telemetry) = &telemetry {
                             // One retry event in, one telemetry seam out.
                             telemetry.note_auto_retry_event(&event);
+                        }
+                        if let Some(recorder) = &research {
+                            recorder.note_auto_retry(&event);
                         }
                         let engine_event = retry_event_to_engine_event(event);
                         if !emit(engine_event) {

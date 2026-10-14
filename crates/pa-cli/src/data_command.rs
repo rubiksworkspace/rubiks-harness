@@ -1,8 +1,13 @@
 //! `prime-agent data`: browse what the harness has saved. Lists sessions with
 //! text and date filters, shows one session's chat, thinking, tool calls,
-//! usage, events or raw records, and lists the data stores. `--json` output
-//! is what the Rubiks IDE data viewer reads.
+//! usage, events or raw records, shows the harness memory refinements build
+//! up and the research log, and lists the data stores. `--json` output is
+//! what the Rubiks IDE data viewer reads.
 
+use pa_daemon::harness_data::{find_harness_scope, harness_data, harness_scopes, HarnessScope};
+use pa_daemon::research_data::{
+    find_research, read_blob, research_data, research_rows, ResearchRow,
+};
 use pa_daemon::session_data::{
     data_stores, find_session, list_session_rows, session_data, DataItem, ItemFilter, SessionData,
     SessionFilter, SessionRow,
@@ -65,6 +70,14 @@ pub(crate) fn run_data_command(args: &[String]) -> i32 {
     let result = match parsed.subcommand.as_deref() {
         None | Some("sessions") => run_sessions(&session_dir, &parsed),
         Some("show") => run_show(&session_dir, &parsed),
+        Some("harness") => run_harness(&agent_dir, &session_dir, &parsed),
+        Some("research") => run_research(&agent_dir, &session_dir, &parsed),
+        Some("blob") => match parsed.session.as_deref() {
+            Some(sha256) => read_blob(&agent_dir, sha256)
+                .map(|content| print!("{content}"))
+                .map_err(|error| format!("{error:#}")),
+            None => Err(format!("Usage: {APP_NAME} data blob <SHA256>")),
+        },
         Some("stores") => {
             let stores = data_stores(&agent_dir, &session_dir);
             if parsed.json {
@@ -84,7 +97,7 @@ pub(crate) fn run_data_command(args: &[String]) -> i32 {
             }
         }
         Some(other) => Err(format!(
-            "unknown data command {other:?}; use sessions, show or stores (see `{APP_NAME} help data`)"
+            "unknown data command {other:?}; use sessions, show, harness, research, blob or stores (see `{APP_NAME} help data`)"
         )),
     };
     match result {
@@ -157,6 +170,165 @@ fn run_show(session_dir: &std::path::Path, parsed: &DataArgs) -> Result<(), Stri
     Ok(())
 }
 
+fn run_harness(
+    agent_dir: &std::path::Path,
+    session_dir: &std::path::Path,
+    parsed: &DataArgs,
+) -> Result<(), String> {
+    let Some(query) = parsed.session.as_deref() else {
+        let scopes = harness_scopes(agent_dir, session_dir);
+        if parsed.json {
+            return print_json(&scopes);
+        }
+        println!(
+            "{:<12} {:>6} {:>7} {:>6} {:>8} {:>11}  {:<17} TITLE",
+            "SCOPE", "MEMORY", "PROMPTS", "SKILLS", "SUBAGENT", "REFINEMENTS", "UPDATED (UTC)"
+        );
+        for scope in &scopes {
+            print_scope_row(scope);
+        }
+        println!(
+            "\nDetails: {APP_NAME} data harness <SCOPE> [--kind memory|prompt|skill|subagent|factory|refinement]"
+        );
+        return Ok(());
+    };
+    let scope =
+        find_harness_scope(agent_dir, session_dir, query).map_err(|error| format!("{error:#}"))?;
+    let data = harness_data(&scope, parsed.kind.as_deref(), parsed.search.as_deref())
+        .map_err(|error| format!("{error:#}"))?;
+    if parsed.json {
+        return print_json(&data);
+    }
+    println!("Harness memory  {}  ({})", data.scope.title, data.scope.id);
+    println!("Folder          {}", data.scope.path.display());
+    let counts = data.counts;
+    println!(
+        "Items: memory {} · prompt {} · skill {} · subagent {} · factory {} · refinement {}\n",
+        counts.memory,
+        counts.prompt,
+        counts.skill,
+        counts.subagent,
+        counts.factory,
+        counts.refinement
+    );
+    if data.items.is_empty() {
+        println!("No items match.");
+        return Ok(());
+    }
+    for item in &data.items {
+        let when = utc_minutes(&item.timestamp);
+        println!("[{when}] {}", item.label);
+        print_lines(&item.text, parsed.full);
+    }
+    if !parsed.full {
+        println!("Long items are cut to {PREVIEW_LINES} lines; add --full to see everything.");
+    }
+    Ok(())
+}
+
+fn run_research(
+    agent_dir: &std::path::Path,
+    session_dir: &std::path::Path,
+    parsed: &DataArgs,
+) -> Result<(), String> {
+    let Some(query) = parsed.session.as_deref() else {
+        let rows = research_rows(agent_dir, session_dir);
+        if parsed.json {
+            return print_json(&rows);
+        }
+        if rows.is_empty() {
+            println!("No research logs yet. They are written for every session started after the research log was added.");
+            return Ok(());
+        }
+        println!(
+            "{:<12} {:>4} {:>5} {:>6} {:>5} {:>6} {:>8}  {:<17} TITLE",
+            "SESSION", "RUNS", "CALLS", "ERRORS", "FIXES", "CHECKS", "COST", "LAST (UTC)"
+        );
+        for row in &rows {
+            print_research_row(row);
+        }
+        println!(
+            "\nDetails: {APP_NAME} data research <SESSION> [--kind run|user|context|api|tool|verification|error|correction|steering|permission|acp|diff|code|survey]"
+        );
+        return Ok(());
+    };
+    let row = find_research(agent_dir, session_dir, query).map_err(|error| format!("{error:#}"))?;
+    let data = research_data(&row, parsed.kind.as_deref(), parsed.search.as_deref())
+        .map_err(|error| format!("{error:#}"))?;
+    if parsed.json {
+        return print_json(&data);
+    }
+    println!(
+        "Research log  {}  ({})",
+        data.session.title, data.session.id
+    );
+    println!("File          {}", data.session.path.display());
+    println!(
+        "ACP session   {}",
+        data.session.acp_session_id.as_deref().unwrap_or("-")
+    );
+    println!("Versions      {}", data.session.harness_versions.join(", "));
+    let counts: Vec<String> = data
+        .counts
+        .iter()
+        .map(|(kind, count)| format!("{kind} {count}"))
+        .collect();
+    println!("Records: {}\n", counts.join(" · "));
+    if data.items.is_empty() {
+        println!("No records match.");
+        return Ok(());
+    }
+    for item in &data.items {
+        let time = item.timestamp.get(11..19).unwrap_or("--:--:--");
+        println!(
+            "[{time}] step {:<3} {:<20} {}",
+            item.data["step"], item.kind, item.label
+        );
+        if parsed.full {
+            print_lines(&item.text, true);
+        }
+    }
+    if !parsed.full {
+        println!("\nAdd --full for every field; stored content: {APP_NAME} data blob <SHA256>.");
+    }
+    Ok(())
+}
+
+fn print_research_row(row: &ResearchRow) {
+    println!(
+        "{:<12} {:>4} {:>5} {:>6} {:>5} {:>6} {:>8}  {:<17} {}",
+        row.short_id,
+        row.runs,
+        row.model_calls,
+        row.errors,
+        row.corrections,
+        row.verifications,
+        format!("${:.4}", row.cost),
+        row.last
+            .as_deref()
+            .map_or_else(|| "-".to_string(), utc_minutes),
+        clip(&row.title, 60)
+    );
+}
+
+fn print_scope_row(scope: &HarnessScope) {
+    let counts = scope.counts;
+    println!(
+        "{:<12} {:>6} {:>7} {:>6} {:>8} {:>11}  {:<17} {}",
+        scope.short_id,
+        counts.memory,
+        counts.prompt,
+        counts.skill,
+        counts.subagent,
+        counts.refinement,
+        scope
+            .updated
+            .as_deref()
+            .map_or_else(|| "-".to_string(), utc_minutes),
+        clip(&scope.title, 60)
+    );
+}
+
 fn print_session_data(data: &SessionData, full: bool) {
     let SessionData {
         session,
@@ -205,7 +377,12 @@ fn print_item(item: &DataItem, full: bool) {
         item.label,
         item.line
     );
-    let lines: Vec<&str> = item.text.lines().collect();
+    print_lines(&item.text, full);
+}
+
+/// An item's text, indented, cut to [`PREVIEW_LINES`] unless `full`.
+fn print_lines(text: &str, full: bool) {
+    let lines: Vec<&str> = text.lines().collect();
     let shown = if full {
         lines.len()
     } else {

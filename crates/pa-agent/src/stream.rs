@@ -130,6 +130,11 @@ pub type OnPayloadHook =
 /// read.
 pub type OnResponseHook = std::sync::Arc<dyn Fn(ProviderResponse, &Model) + Send + Sync>;
 
+/// Hook invoked once per completed response body with provider details the
+/// message shape does not carry (raw usage, JSON repairs); see pa-ai's
+/// `OnProviderDetailHook`, which has the same shape.
+pub type OnProviderDetailHook = std::sync::Arc<dyn Fn(serde_json::Value) + Send + Sync>;
+
 /// Stream request options (subset of the TS `SimpleStreamOptions` the loop
 /// uses, plus the request hooks the TS options carry). Every option is
 /// either serialized into the proxy request (`temperature`, `max_tokens`,
@@ -149,6 +154,7 @@ pub struct StreamRequestOptions {
     pub signal: crate::abort::AbortSignal,
     pub on_payload: Option<OnPayloadHook>,
     pub on_response: Option<OnResponseHook>,
+    pub on_provider_detail: Option<OnProviderDetailHook>,
     /// Extra request headers (TS `SimpleStreamOptions.headers`), merged
     /// over the provider's auth-resolved headers at the adapter seam.
     pub headers: Option<std::collections::BTreeMap<String, String>>,
@@ -166,6 +172,7 @@ impl std::fmt::Debug for StreamRequestOptions {
             .field("signal", &self.signal)
             .field("on_payload", &self.on_payload.is_some())
             .field("on_response", &self.on_response.is_some())
+            .field("on_provider_detail", &self.on_provider_detail.is_some())
             .field("headers", &self.headers)
             .finish()
     }
@@ -183,6 +190,7 @@ impl Default for StreamRequestOptions {
             signal: crate::abort::AbortSignal::never(),
             on_payload: None,
             on_response: None,
+            on_provider_detail: None,
             headers: None,
         }
     }

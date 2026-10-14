@@ -317,9 +317,16 @@ pub(crate) struct DaemonAcpState {
 /// lock is poisoned (a holder panicked while holding it).
 pub async fn run_daemon_attached_acp_mode(options: DaemonAcpOptions) -> anyhow::Result<i32> {
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Value>();
+    // The research log's view of this connection, set once the daemon
+    // session is bound (every frame on the connection belongs to it).
+    let research_tap: Arc<std::sync::OnceLock<Arc<pa_core::research_log::AcpTap>>> = Arc::default();
+    let writer_tap = Arc::clone(&research_tap);
     let writer = tokio::spawn(async move {
         let mut stdout = tokio::io::stdout();
         while let Some(frame) = rx.recv().await {
+            if let Some(tap) = writer_tap.get() {
+                tap.outgoing(&frame);
+            }
             let Ok(mut line) = serde_json::to_string(&frame) else {
                 continue;
             };
@@ -443,6 +450,11 @@ pub async fn run_daemon_attached_acp_mode(options: DaemonAcpOptions) -> anyhow::
         });
     }
     let binding = bind_daemon_session(&link, &state, options.create.clone()).await?;
+    if let Some(tap) = crate::paths::agent_dir().ok().and_then(|agent_dir| {
+        pa_core::research_log::AcpTap::open(&agent_dir, &binding.active_session_id)
+    }) {
+        let _ = research_tap.set(tap);
+    }
 
     // Only the prompt handlers stay owned: EOF aborts them (TS aborts the
     // controller and exits), so the process never waits on a prompt still
@@ -460,6 +472,9 @@ pub async fn run_daemon_attached_acp_mode(options: DaemonAcpOptions) -> anyhow::
         }
         if input_line.trim().is_empty() {
             continue;
+        }
+        if let Some(tap) = research_tap.get() {
+            tap.incoming(&input_line);
         }
         let incoming = match jsonrpc::parse_line(&input_line) {
             Ok(incoming) => incoming,

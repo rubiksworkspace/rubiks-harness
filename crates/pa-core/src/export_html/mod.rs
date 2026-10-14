@@ -233,7 +233,7 @@ mod tests {
         assert_eq!(returned, out.to_string_lossy());
         let html = std::fs::read_to_string(&out).expect("read export");
         assert!(html.contains("Session Export"));
-        assert!(html.contains("--accent: #7c6faf;"));
+        assert!(html.contains("--accent: #6a9fd1;"));
         assert!(html.contains("marked.min.js") || html.contains("marked"));
         let start = html
             .find("session-data\" type=\"application/json\">")

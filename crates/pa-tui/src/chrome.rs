@@ -8,16 +8,17 @@ use serde_json::Value;
 
 use crate::theme::{Theme, ThemeBg, ThemeColor};
 
-/// The compact 7-row brand butterfly.
-pub const PRIME_COMPACT_BUTTERFLY_LOGO: &str = concat!(
-    "                 \u{2597}\u{2584}\u{2584}\u{2588}\u{2580}\n",
-    "   \u{2588}\u{2588}\u{2588}\u{2584}       \u{2597}\u{2584}\u{2588}\u{2588}\u{2588}\u{2580}\n",
-    "  \u{2597}\u{2588}\u{259b}\u{2590}\u{2588}\u{2599}   \u{2597}\u{2584}\u{2588}\u{2580}\u{2597}\u{2588}\u{2580}\n",
-    " \u{2597}\u{2588}\u{259b} \u{259f}\u{2588}\u{2588}\u{2599}\u{2584}\u{2588}\u{2588}\u{259b} \u{259f}\u{259b}\n",
-    " \u{2597}\u{259f}\u{258c} \u{2590}\u{2588}\u{2588}\u{2588}\u{259b}\u{2598}\u{2597}\u{2584}\u{2588}\u{2596}\n",
-    "\u{259f}\u{2588}\u{2588}\u{2588}\u{2584}  \u{2584}\u{2584}\u{259f}\u{2588}\u{2588}\u{2588}\u{2580}\n",
-    "\u{259c}\u{2588}\u{259b}\u{2580}\u{2598}  \u{259c}\u{2588}\u{259b}\u{2580}\u{2598}",
-);
+/// The Rubiks cube mark: three rows of three stickers, blue, red and yellow
+/// (the brand's terminal rule for the mark), in half blocks so each sticker is
+/// about square with half-row gaps between the rows.
+pub const RUBIKS_CUBE_LOGO: [(&str, ThemeColor); 6] = [
+    ("\u{2584}\u{2584}\u{2584}\u{2584} \u{2584}\u{2584}\u{2584}\u{2584} \u{2584}\u{2584}\u{2584}\u{2584}", ThemeColor::Accent),
+    ("\u{2588}\u{2588}\u{2588}\u{2588} \u{2588}\u{2588}\u{2588}\u{2588} \u{2588}\u{2588}\u{2588}\u{2588}", ThemeColor::Accent),
+    ("\u{2584}\u{2584}\u{2584}\u{2584} \u{2584}\u{2584}\u{2584}\u{2584} \u{2584}\u{2584}\u{2584}\u{2584}", ThemeColor::Error),
+    ("\u{2588}\u{2588}\u{2588}\u{2588} \u{2588}\u{2588}\u{2588}\u{2588} \u{2588}\u{2588}\u{2588}\u{2588}", ThemeColor::Error),
+    ("\u{2584}\u{2584}\u{2584}\u{2584} \u{2584}\u{2584}\u{2584}\u{2584} \u{2584}\u{2584}\u{2584}\u{2584}", ThemeColor::Warning),
+    ("\u{2588}\u{2588}\u{2588}\u{2588} \u{2588}\u{2588}\u{2588}\u{2588} \u{2588}\u{2588}\u{2588}\u{2588}", ThemeColor::Warning),
+];
 
 /// Truncate a plain string to a visible width (cut on grapheme
 /// boundaries, appending the ellipsis).
@@ -334,14 +335,14 @@ pub fn render_top_bar(state: &ChromeState, theme: &Theme, width: usize) -> Line 
     line
 }
 
-/// The brand splash: butterfly logo beside the version/model/cwd metadata
+/// The brand splash: the cube mark beside the version/model/cwd metadata
 /// (TS `BrandSplashHeader`, `topPadding` always on).
 #[must_use]
 pub fn render_splash(state: &ChromeState, theme: &Theme, width: usize) -> Vec<Line> {
     let safe_width = width.max(1);
     let padding_x = usize::from(safe_width > 1);
     let content_width = safe_width.saturating_sub(padding_x * 2).max(1);
-    let logo_raw: Vec<&str> = PRIME_COMPACT_BUTTERFLY_LOGO.split('\n').collect();
+    let logo_raw: Vec<&str> = RUBIKS_CUBE_LOGO.iter().map(|(line, _)| *line).collect();
     let logo_canvas_width = logo_raw
         .iter()
         .map(|line| str_width(line))
@@ -413,14 +414,19 @@ pub fn render_splash(state: &ChromeState, theme: &Theme, width: usize) -> Vec<Li
     } else {
         0
     };
-    let logo_text = theme.fg_style(ThemeColor::Text);
+    // The mark is shorter than the metadata on most screens: center it too.
+    let logo_start = (row_count - logo_raw.len()) / 2;
     for index in 0..row_count {
         let mut spans: Line = Vec::new();
         let pad = if padding_x > 0 { " " } else { "" };
         spans.push(Span::styled(pad.to_string(), Style::default()));
         if show_logo {
-            let logo_line = logo_raw.get(index).copied().unwrap_or("");
-            spans.push(Span::styled(logo_line.to_string(), logo_text));
+            let (logo_line, tone) = index
+                .checked_sub(logo_start)
+                .and_then(|row| RUBIKS_CUBE_LOGO.get(row))
+                .copied()
+                .unwrap_or(("", ThemeColor::Text));
+            spans.push(Span::styled(logo_line.to_string(), theme.fg_style(tone)));
             let fill = logo_canvas_width.saturating_sub(str_width(logo_line)) + gutter;
             spans.push(Span::styled(" ".repeat(fill), Style::default()));
         }

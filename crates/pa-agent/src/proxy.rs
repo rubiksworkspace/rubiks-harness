@@ -1015,6 +1015,7 @@ mod tests {
             signal: AbortSignal::never(),
             on_payload: None,
             on_response: None,
+            on_provider_detail: None,
             headers: None,
         }
     }

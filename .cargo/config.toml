@@ -3,3 +3,5 @@
 # already set, so a test that needs it can still set its own value.
 [env]
 DO_NOT_TRACK = "1"
+# ...and writes no research log unless a test's settings turn it on.
+PRIME_AGENT_RESEARCH_DEFAULT = "off"

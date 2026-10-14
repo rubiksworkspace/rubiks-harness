@@ -186,6 +186,28 @@ impl AgentSession {
             .unwrap_or_else(std::sync::PoisonError::into_inner) = recorder;
     }
 
+    /// Install the run's research log recorder (the engine build's handoff;
+    /// the daemon's retry loop reads it back through
+    /// [`AgentSession::research_log`]).
+    pub fn set_research_log(
+        &self,
+        recorder: Option<std::sync::Arc<crate::research_log::Recorder>>,
+    ) {
+        *self
+            .research_log
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = recorder;
+    }
+
+    /// The run's research log recorder, when the research log is on.
+    #[must_use]
+    pub fn research_log(&self) -> Option<std::sync::Arc<crate::research_log::Recorder>> {
+        self.research_log
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+
     /// The session's semantic-edge recorder, when the engine built the
     /// session with a semantic identity.
     #[must_use]

@@ -68,6 +68,7 @@ pub mod packages;
 pub mod platform;
 pub mod prompts;
 pub mod refinement;
+pub mod research_log;
 pub mod resources;
 pub mod session;
 pub mod session_engine;

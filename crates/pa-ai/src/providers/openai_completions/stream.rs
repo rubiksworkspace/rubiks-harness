@@ -48,6 +48,13 @@ struct StreamingState {
     saw_finish_reason: bool,
     /// The SSE terminal marker (`data: [DONE]`) arrived.
     saw_done_marker: bool,
+    /// The provider's last usage object, verbatim (it carries counts the
+    /// normalized usage drops, e.g. reasoning tokens).
+    raw_usage: Option<Value>,
+    /// Stream chunks that only parsed after JSON repair.
+    repaired_chunks: u32,
+    /// Tool calls whose streamed arguments did not parse as sent.
+    repaired_tool_arguments: Vec<String>,
 }
 
 impl StreamingState {
@@ -65,6 +72,9 @@ impl StreamingState {
             response_service_tier: None,
             saw_finish_reason: false,
             saw_done_marker: false,
+            raw_usage: None,
+            repaired_chunks: 0,
+            repaired_tool_arguments: Vec::new(),
         }
     }
 
@@ -177,6 +187,14 @@ fn finish_blocks(state: &mut StreamingState, writer: &AssistantMessageEventWrite
             }
             AssistantContent::ToolCall(_) => {
                 let partial_args = state.tool_call_partial_args.remove(&index);
+                if let (Some(accumulator), AssistantContent::ToolCall(tool_call)) =
+                    (partial_args.as_ref(), &state.output.content[index])
+                {
+                    let text = accumulator.text();
+                    if !text.trim().is_empty() && serde_json::from_str::<Value>(text).is_err() {
+                        state.repaired_tool_arguments.push(tool_call.name.clone());
+                    }
+                }
                 let arguments = partial_args.as_ref().map_or_else(
                     || json!({}),
                     |accumulator| parse_streaming_json(Some(accumulator.text())),
@@ -231,6 +249,7 @@ fn handle_chunk(
     if let Some(usage) = chunk.get("usage") {
         if usage.is_object() {
             state.output.usage = parse_chunk_usage(usage, model, cache_write_cost);
+            state.raw_usage = Some(usage.clone());
         }
     }
 
@@ -247,6 +266,7 @@ fn handle_chunk(
         if let Some(usage) = choice.get("usage") {
             if usage.is_object() {
                 state.output.usage = parse_chunk_usage(usage, model, cache_write_cost);
+                state.raw_usage = Some(usage.clone());
             }
         }
     }
@@ -651,7 +671,7 @@ async fn run_stream(
                 // ends the stream.
                 break;
             }
-            if let Some(chunk) = parse_sse_event_data(event) {
+            if let Some(chunk) = parse_sse_event_data(event, &mut state.repaired_chunks) {
                 handle_chunk(&chunk, model, cache_write_cost, &mut state, writer);
             }
         }
@@ -664,7 +684,7 @@ async fn run_stream(
             if mark_done_marker(&event, &mut state) {
                 continue;
             }
-            if let Some(chunk) = parse_sse_event_data(&event) {
+            if let Some(chunk) = parse_sse_event_data(&event, &mut state.repaired_chunks) {
                 handle_chunk(&chunk, model, cache_write_cost, &mut state, writer);
             }
         }
@@ -681,6 +701,13 @@ async fn run_stream(
 
     encode_reasoning_details_signature(&mut state);
     finish_blocks(&mut state, writer);
+    if let Some(hook) = &base_options.on_provider_detail {
+        hook(json!({
+            "usage": state.raw_usage,
+            "repairedChunks": state.repaired_chunks,
+            "repairedToolArguments": state.repaired_tool_arguments,
+        }));
+    }
     *output = state.output;
 
     if base_options
@@ -738,7 +765,6 @@ fn open_stream_block(output: &AssistantMessage) -> OpenStreamBlock {
     }
 }
 
-/// Parse the JSON payload of an SSE event; `None` for `[DONE]` and comments.
 #[cfg(test)]
 #[path = "stream_bench.rs"]
 mod stream_bench;
@@ -748,10 +774,16 @@ mod stream_bench;
 #[path = "stream_drop.rs"]
 mod stream_drop;
 
-fn parse_sse_event_data(event: &ServerSentEvent) -> Option<Value> {
+/// Parse the JSON payload of an SSE event; `None` for `[DONE]` and comments.
+/// Counts into `repaired` each payload that only parsed after repair.
+fn parse_sse_event_data(event: &ServerSentEvent, repaired: &mut u32) -> Option<Value> {
     if event.data.trim() == "[DONE]" {
         return None;
     }
+    if let Ok(value) = serde_json::from_str::<Value>(&event.data) {
+        return Some(value);
+    }
+    *repaired += 1;
     match parse_json_with_repair(&event.data) {
         Ok(value) => Some(value),
         Err(_) => Some(parse_streaming_json(Some(&event.data))),

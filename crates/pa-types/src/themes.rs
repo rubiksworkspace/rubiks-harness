@@ -4,12 +4,16 @@
 //! discovery and behavior belong to the consuming crates.
 
 /// The bundled theme names, in builtin resolution order.
-pub const BUILTIN_THEME_NAMES: [&str; 3] = ["prime", "dark", "light"];
+pub const BUILTIN_THEME_NAMES: [&str; 5] = ["prime", "dark", "light", "rubiks", "rubiks-light"];
 
 /// The `prime` theme file (Prime Agent's default, dark-first).
 pub const PRIME_THEME_JSON: &str = include_str!("../themes/prime.json");
 pub const DARK_THEME_JSON: &str = include_str!("../themes/dark.json");
 pub const LIGHT_THEME_JSON: &str = include_str!("../themes/light.json");
+/// The Rubiks themes: the Cube design system palette (paper and ink, blue,
+/// red and yellow stickers), dark and light.
+pub const RUBIKS_THEME_JSON: &str = include_str!("../themes/rubiks.json");
+pub const RUBIKS_LIGHT_THEME_JSON: &str = include_str!("../themes/rubiks-light.json");
 
 /// The bundled theme file for `name`, when `name` is a built-in theme.
 #[must_use]
@@ -18,6 +22,8 @@ pub fn builtin_theme_json(name: &str) -> Option<&'static str> {
         "prime" => Some(PRIME_THEME_JSON),
         "dark" => Some(DARK_THEME_JSON),
         "light" => Some(LIGHT_THEME_JSON),
+        "rubiks" => Some(RUBIKS_THEME_JSON),
+        "rubiks-light" => Some(RUBIKS_LIGHT_THEME_JSON),
         _ => None,
     }
 }

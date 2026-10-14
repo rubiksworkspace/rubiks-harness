@@ -143,6 +143,7 @@ async fn stream_assistant_response_inner(
         // the `StreamFn` boundary instead.
         on_payload: None,
         on_response: None,
+        on_provider_detail: None,
         headers: None,
     };
 

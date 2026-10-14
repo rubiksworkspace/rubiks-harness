@@ -53,35 +53,43 @@ fn write_compaction_settings(dir: &std::path::Path, reserve_tokens: u64) {
 
 /// One faux-driven engine over its own tempdir (settings written before
 /// the first prompt so the session build resolves them).
-/// Turns the repo's `cargo test` telemetry opt-out (`DO_NOT_TRACK=1` in
-/// `.cargo/config.toml`) back off for one test that asserts telemetry
-/// wiring, restoring it on drop. Debug builds have no network sink, so the
-/// opted-in test still sends nothing (its callers are ignored in release
-/// builds, which have one); serialized through the crate-wide
-/// `test_support::TELEMETRY_ENV_MUTEX` so the opt-ins and the supervisor
-/// tests' env scrub never interleave their restores.
+/// Turns telemetry on for one test that asserts telemetry wiring: clears the
+/// repo's `cargo test` opt-out (`DO_NOT_TRACK=1` in `.cargo/config.toml`) and
+/// sets `PRIME_AGENT_TELEMETRY=1`, since telemetry is off by default; both are
+/// restored on drop. Debug builds have no network sink, so the opted-in test
+/// still sends nothing (its callers are ignored in release builds, which have
+/// one); serialized through the crate-wide `test_support::TELEMETRY_ENV_MUTEX`
+/// so the opt-ins and the supervisor tests' env scrub never interleave their
+/// restores.
 pub(crate) fn telemetry_opt_in() -> TelemetryOptIn {
     let guard = crate::test_support::TELEMETRY_ENV_MUTEX
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    let previous = std::env::var_os("DO_NOT_TRACK");
-    std::env::set_var("DO_NOT_TRACK", "0");
+    let previous = TELEMETRY_OPT_IN_VARS.map(|(name, _)| std::env::var_os(name));
+    for (name, value) in TELEMETRY_OPT_IN_VARS {
+        std::env::set_var(name, value);
+    }
     TelemetryOptIn {
         previous,
         _guard: guard,
     }
 }
 
+const TELEMETRY_OPT_IN_VARS: [(&str, &str); 2] =
+    [("DO_NOT_TRACK", "0"), ("PRIME_AGENT_TELEMETRY", "1")];
+
 pub(crate) struct TelemetryOptIn {
-    previous: Option<std::ffi::OsString>,
+    previous: [Option<std::ffi::OsString>; 2],
     _guard: std::sync::MutexGuard<'static, ()>,
 }
 
 impl Drop for TelemetryOptIn {
     fn drop(&mut self) {
-        match self.previous.take() {
-            Some(value) => std::env::set_var("DO_NOT_TRACK", value),
-            None => std::env::remove_var("DO_NOT_TRACK"),
+        for ((name, _), previous) in TELEMETRY_OPT_IN_VARS.iter().zip(&mut self.previous) {
+            match previous.take() {
+                Some(value) => std::env::set_var(name, value),
+                None => std::env::remove_var(name),
+            }
         }
     }
 }

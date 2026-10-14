@@ -1007,6 +1007,11 @@ impl AgentSessionEngine {
             .clone();
         pa_core::session_engine::engine::create_session(SessionEngineConfig {
             on_late_sent_agent_message,
+            research_daemon_session_id: self
+                .config
+                .supervisor_link
+                .as_ref()
+                .map(|link| link.active_session_id.clone()),
             semantic_edges,
             telemetry,
             cwd,

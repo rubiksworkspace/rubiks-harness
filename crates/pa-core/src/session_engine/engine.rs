@@ -100,6 +100,9 @@ pub struct SessionEngineConfig {
     /// request ids on the wire).
     pub semantic_edges: Option<super::semantic_edges::SemanticEdgeIdentity>,
     pub on_late_sent_agent_message: Option<crate::tools::ipython::LateSentAgentMessageHandler>,
+    /// The daemon's id for this session, when a daemon worker hosts it: the
+    /// research log's ACP side is keyed by it.
+    pub research_daemon_session_id: Option<String>,
 }
 
 pub struct SessionEngine {
@@ -245,6 +248,14 @@ pub async fn create_session(mut config: SessionEngineConfig) -> anyhow::Result<S
     // Request timing: the settings half of the flag is read once here
     // (`settings` moves into the loader); the `PI_REQUEST_TIMING` half stays live.
     let request_timing_settings = settings.get_request_timing();
+    // The research log's switches and the behavior settings its run record
+    // carries, read before `settings` moves like the snapshots above.
+    let research_config = crate::research_log::ResearchConfig::resolve(&settings.get_research());
+    let research_harness_settings = serde_json::json!({
+        "compaction": settings.settings().compaction,
+        "retry": settings.settings().retry,
+        "autoRefine": settings.settings().auto_refine,
+    });
     // Captured before `settings` moves into the resource loader: the
     // factory host bridge's preflight facts (the daemon `allowedModels`
     // pin), like the request-timing snapshot above.
@@ -607,6 +618,57 @@ pub async fn create_session(mut config: SessionEngineConfig) -> anyhow::Result<S
         stream_fn,
     );
     let side_question_stream_fn = std::sync::Arc::clone(&timing_stream_fn);
+    // The research log wraps the session's own model calls (side questions
+    // stay out of its step count).
+    let research = if research_config.enabled {
+        let session_id = wiring.session.lock().await.get_session_id().to_string();
+        crate::research_log::Recorder::start(
+            &config.agent_dir,
+            &session_id,
+            research_config,
+            crate::research_log::RunInfo {
+                cwd: cwd.clone(),
+                provider: model.provider.clone(),
+                model_id: model.id.clone(),
+                context_window: model.context_window,
+                max_tokens: model.max_tokens,
+                thinking_level: format!("{thinking_level:?}").to_lowercase(),
+                service_tier: serde_json::to_value(service_tier_preference)
+                    .ok()
+                    .and_then(|tier| tier.as_str().map(str::to_string)),
+                prices: serde_json::to_value(&model.cost).unwrap_or_default(),
+                system_prompt: system_prompt.clone(),
+                tools: tools
+                    .iter()
+                    .map(|tool| {
+                        serde_json::json!({
+                            "name": tool.name(),
+                            "description": tool.description(),
+                            "parameters": tool.parameters(),
+                        })
+                    })
+                    .collect(),
+                skills: resources
+                    .skills
+                    .iter()
+                    .map(|skill| skill.name.clone())
+                    .collect(),
+                harness_settings: research_harness_settings,
+                model_prompt_extras: model_prompts.extras.clone(),
+                rlm_depth: config.rlm_depth.unwrap_or(0),
+                daemon_session_id: config.research_daemon_session_id.clone(),
+            },
+        )
+    } else {
+        None
+    };
+    let timing_stream_fn = match &research {
+        Some(recorder) => crate::research_log::instrument_stream_fn(
+            std::sync::Arc::clone(recorder),
+            timing_stream_fn,
+        ),
+        None => timing_stream_fn,
+    };
     let semantic_recorder = config.semantic_edges.take().map(|identity| {
         std::sync::Arc::new(super::semantic_edges::SemanticEdgeRecorder::open(identity))
     });
@@ -662,6 +724,9 @@ pub async fn create_session(mut config: SessionEngineConfig) -> anyhow::Result<S
     });
 
     let agent = Arc::new(agent);
+    if let Some(recorder) = &research {
+        crate::research_log::observe_agent_events(&agent, std::sync::Arc::clone(recorder)).await;
+    }
     // TS `_startRlmChildRun`'s spawn anchor: the `rlm.spawn` host handler
     // names the parent's in-flight turn through this weak seam (the
     // bridge is built before the agent exists, and a strong edge would
@@ -719,6 +784,7 @@ pub async fn create_session(mut config: SessionEngineConfig) -> anyhow::Result<S
     // park read the recorder; the side question keeps the pre-semantic
     // fn so its calls carry no id.
     session.set_semantic_edges(semantic_recorder);
+    session.set_research_log(research);
     session.set_side_question_stream_fn(side_question_stream_fn);
     // The armed image route never outlives the run that armed it (TS
     // `_clearModelOverrideWhenIdle`: the override drops once the turn is

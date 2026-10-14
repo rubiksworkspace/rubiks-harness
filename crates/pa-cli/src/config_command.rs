@@ -17,7 +17,7 @@ pub fn run() -> i32 {
     let agent_dir = crate::config::get_agent_dir();
     let mut resolve_settings = SettingsManager::create(&cwd, &agent_dir);
     crate::package_command::report_settings_errors(&mut resolve_settings, "config command");
-    let theme_name = resolve_settings.get_theme().unwrap_or("prime").to_string();
+    let theme_name = resolve_settings.get_theme().unwrap_or("rubiks").to_string();
     let mut manager = PackageManager::new(cwd.clone(), agent_dir.clone(), resolve_settings);
     let resolved = match manager.resolve() {
         Ok(resolved) => resolved,

@@ -505,7 +505,7 @@ pub struct DataStore {
 /// and settings are deliberately not listed.
 #[must_use]
 pub fn data_stores(agent_dir: &Path, session_dir: &Path) -> Vec<DataStore> {
-    let stores: [(&'static str, &'static str, PathBuf); 9] = [
+    let stores: [(&'static str, &'static str, PathBuf); 10] = [
         (
             "sessions",
             "Every session: messages, tool calls, usage and events (JSONL)",
@@ -526,6 +526,11 @@ pub fn data_stores(agent_dir: &Path, session_dir: &Path) -> Vec<DataStore> {
             "harness",
             "Persistent harness memories and refinements",
             agent_dir.join("harness"),
+        ),
+        (
+            "research",
+            "Research log: run metadata, model calls and harness decisions",
+            pa_core::research_log::research_dir(agent_dir),
         ),
         (
             "daemon-workers",

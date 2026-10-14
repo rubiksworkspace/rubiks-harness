@@ -473,6 +473,21 @@ pub(crate) fn commit_attempt(
     // mid-window tail sits between `first_kept_entry` and the compaction
     // row and rides the retained tail.
     session.append_compaction(prepared.entry.clone())?;
+    if let Some(recorder) = crate::research_log::recorder_for(session.get_session_id()) {
+        // chars/4 over what the model now sees: the usage the last reply
+        // reported still describes the context before the cut.
+        let tokens_after: u64 = rebuilt_context_after_compaction(session)
+            .iter()
+            .map(super::compaction::estimate_tokens)
+            .sum();
+        recorder.note_compaction(
+            attempt.tokens_before,
+            tokens_after,
+            attempt.history.len() + attempt.turn_prefix_messages.len(),
+            &attempt.first_kept_entry,
+            &prepared.result.summary,
+        );
+    }
     super::compaction_trace::trace(
         "compact.entry_appended",
         &serde_json::json!({

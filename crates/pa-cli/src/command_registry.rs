@@ -242,18 +242,21 @@ pub const COMMAND_SPECS: &[CommandSpec] = &[
     ),
     CommandSpec::new(
         &["data"],
-        "data [sessions|show|stores]",
+        "data [sessions|show|harness|research|blob|stores]",
         "Browse saved sessions and harness data",
     )
     .description(
         "Lists saved sessions, shows one session's chat, thinking, tool calls, usage, events or \
-raw JSONL records, and lists where the harness keeps its data. Times and dates are UTC. Every \
-command takes --json.",
+raw JSONL records, shows the harness memory Prime Agent refines itself with (memories, prompts, \
+skills, subagents and the refinements that changed them), and lists where the harness keeps its \
+data. Times and dates are UTC. Every command takes --json.",
     )
     .examples(&[
         "data sessions --search \"vault\" --since 2026-10-01",
         "data show 9e291328986e --kind tools",
         "data show 9e291328986e --kind raw --json",
+        "data harness global --kind refinement",
+        "data research 9e291328986e --kind api",
     ]),
     CommandSpec::new(
         &["data", "sessions"],
@@ -277,6 +280,50 @@ command takes --json.",
         "--full               Print long items in full",
         "--json               Print JSON",
     ]),
+    CommandSpec::new(
+        &["data", "harness"],
+        "data harness [global|<id>] [--kind KIND] [--search TEXT] [--full] [--json]",
+        "Show the harness memory refinements build up",
+    )
+    .description(
+        "Without a scope, lists the global memory and every session that has memory of its own. \
+With one, shows its entries and refinements, newest first. Global memory is used by every \
+session; a session's own memory only by that session.",
+    )
+    .options(&[
+        "-k, --kind <kind>    all (default), memory, prompt, skill, subagent, factory or refinement",
+        "-s, --search <text>  Keep items whose label or text matches",
+        "--full               Print long items in full",
+        "--json               Print JSON",
+    ]),
+    CommandSpec::new(
+        &["data", "research"],
+        "data research [<id>] [--kind KIND] [--search TEXT] [--full] [--json]",
+        "Show the research log of a session",
+    )
+    .description(
+        "Without an id, lists every session with a research log. With one, shows its records by \
+time: the harness's own (run.start, user.prompt, context.built, api.call, api.retry, tool.result, \
+verification, error.detected, correction.delivered, context.compacted, run.end), the ACP side \
+(acp.session_bound, acp.prompt, acp.turn_end, steering, permission) and the Rubiks IDE's \
+(diff.review, diff.survival, code.origin, survey). --kind matches the start of the event type, \
+so `api` shows calls and retries; `--kind acp` adds every ACP frame (acp.message).",
+    )
+    .options(&[
+        "-k, --kind <kind>    Event type or its start: run, api, tool, error, acp, diff, …",
+        "-s, --search <text>  Keep records whose label or JSON matches",
+        "--full               Print every field of each record",
+        "--json               Print JSON",
+    ]),
+    CommandSpec::new(
+        &["data", "blob"],
+        "data blob <sha256>",
+        "Print stored research content by hash",
+    )
+    .description(
+        "Request payloads, reasoning, prompts, tool output and compaction summaries are kept as \
+blobs when research consent is \"content\"; records reference them by SHA-256.",
+    ),
     CommandSpec::new(
         &["data", "stores"],
         "data stores [--json]",

@@ -305,6 +305,9 @@ mod tests {
     )]
     async fn refusal_telemetry_honors_both_opt_outs() {
         let _telemetry = crate::agent_engine::tests::telemetry_opt_in();
+        // This test turns telemetry on through settings, so the environment
+        // must not force it (the opt-in's guard restores the variable).
+        std::env::remove_var("PRIME_AGENT_TELEMETRY");
         let dir = tempfile::tempdir().expect("tempdir");
         let disabled = ModelRefusalTelemetry::new(dir.path().to_path_buf(), true);
         disabled.note_refused("set_model", "zai/glm-5.3", dir.path());
@@ -320,6 +323,7 @@ mod tests {
             settings_gated.client.lock().unwrap().is_none(),
             "no client when settings disable telemetry"
         );
+        write_settings(dir.path(), r#"{"telemetry": {"enabled": true}}"#);
         let enabled = ModelRefusalTelemetry::new(dir.path().to_path_buf(), false);
         enabled.note_refused("set_model", "zai/glm-5.3", dir.path());
         assert!(

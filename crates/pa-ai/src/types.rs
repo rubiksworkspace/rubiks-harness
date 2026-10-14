@@ -64,6 +64,14 @@ pub type OnPayloadHook =
 /// Hook invoked after the HTTP response is received and before the body is read.
 pub type OnResponseHook = std::sync::Arc<dyn Fn(ProviderResponse, &Model) + Send + Sync>;
 
+/// Hook invoked once per completed response body with what the provider
+/// reported that the message shape does not carry: `usage` (the provider's raw
+/// usage object, e.g. reasoning-token counts), `repairedChunks` (stream chunks
+/// that needed JSON repair) and `repairedToolArguments` (tool calls whose
+/// arguments did not parse as sent). Observes only; it cannot change the
+/// response.
+pub type OnProviderDetailHook = std::sync::Arc<dyn Fn(serde_json::Value) + Send + Sync>;
+
 /// Options shared by all providers.
 #[derive(Clone, Default)]
 pub struct StreamOptions {
@@ -77,6 +85,7 @@ pub struct StreamOptions {
     pub session_id: Option<String>,
     pub on_payload: Option<OnPayloadHook>,
     pub on_response: Option<OnResponseHook>,
+    pub on_provider_detail: Option<OnProviderDetailHook>,
     pub headers: Option<std::collections::HashMap<String, String>>,
     pub timeout_ms: Option<u64>,
     pub metadata: Option<std::collections::HashMap<String, serde_json::Value>>,
@@ -95,6 +104,7 @@ impl std::fmt::Debug for StreamOptions {
             .field("session_id", &self.session_id)
             .field("on_payload", &self.on_payload.is_some())
             .field("on_response", &self.on_response.is_some())
+            .field("on_provider_detail", &self.on_provider_detail.is_some())
             .field("headers", &self.headers)
             .field("timeout_ms", &self.timeout_ms)
             .field("metadata", &self.metadata)

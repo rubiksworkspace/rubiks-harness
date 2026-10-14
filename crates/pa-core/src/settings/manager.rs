@@ -10,7 +10,8 @@ use super::load::from_value_lenient;
 use super::merge::{deep_merge, migrate};
 use super::storage::{SettingsScope, SettingsStorage};
 use super::types::{
-    QueueModeSetting, Settings, ThinkingLevelSetting, TransportSetting, UpdateChannel,
+    QueueModeSetting, ResearchSettings, Settings, ThinkingLevelSetting, TransportSetting,
+    UpdateChannel,
 };
 
 pub const RECENT_MODELS_LIMIT: usize = 20;
@@ -874,6 +875,12 @@ impl SettingsManager {
             .and_then(|t| t.notice_shown)
             .or_else(|| self.global.telemetry.as_ref().and_then(|t| t.notice_shown))
             .unwrap_or(false)
+    }
+
+    /// The merged `research` section (see [`ResearchSettings`]).
+    #[must_use]
+    pub fn get_research(&self) -> ResearchSettings {
+        self.merged.research.clone().unwrap_or_default()
     }
 
     /// `requestTiming`: unset means OFF — the per-request timing timeline

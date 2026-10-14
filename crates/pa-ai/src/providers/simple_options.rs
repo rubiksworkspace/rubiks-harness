@@ -57,6 +57,7 @@ pub fn build_base_options(
         session_id: base.session_id,
         on_payload: base.on_payload,
         on_response: base.on_response,
+        on_provider_detail: base.on_provider_detail,
         headers: base.headers,
         timeout_ms: base.timeout_ms,
         metadata: base.metadata,

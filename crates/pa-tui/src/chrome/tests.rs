@@ -629,6 +629,7 @@ fn speed_footer_is_one_dim_row_truncated_to_width() {
 
 use super::*;
 use crate::theme::{ColorMode, Theme};
+use ratatui::style::Color;
 use serde_json::json;
 
 fn theme() -> Theme {
@@ -657,9 +658,24 @@ fn splash_renders_logo_version_model_and_cwd() {
     assert!(lines.iter().any(|l| text(l).contains("prime agent v0.0.0")));
     assert!(lines.iter().any(|l| text(l).contains("model faux-1")));
     assert!(lines.iter().any(|l| text(l).contains("cwd /tmp/project")));
-    assert!(lines
+    let sticker_rows: Vec<Option<Color>> = lines
         .iter()
-        .any(|l| text(l).contains("\u{2597}\u{2584}\u{2584}")));
+        .filter_map(|line| {
+            line.iter()
+                .find(|span| span.content.starts_with('\u{2588}'))
+        })
+        .map(|span| span.style.fg)
+        .collect();
+    let tone = |color| theme().fg_style(color).fg;
+    assert_eq!(
+        sticker_rows,
+        [
+            tone(ThemeColor::Accent),
+            tone(ThemeColor::Error),
+            tone(ThemeColor::Warning)
+        ],
+        "three sticker rows: blue, red, yellow"
+    );
 }
 
 #[test]

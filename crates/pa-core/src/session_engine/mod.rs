@@ -167,6 +167,7 @@ pub struct AgentSession {
     /// built without a semantic identity (verification harnesses
     /// building the loop directly).
     semantic_edges: std::sync::Mutex<Option<std::sync::Arc<semantic_edges::SemanticEdgeRecorder>>>,
+    research_log: std::sync::Mutex<Option<std::sync::Arc<crate::research_log::Recorder>>>,
     /// TS `unwrapSemanticEdgeStreamFn(streamFn)`: the timing-instrumented,
     /// pre-semantic stream fn calls outside session history run on (a side
     /// question carries no request id). `None` until the engine wires it;
@@ -246,6 +247,7 @@ impl AgentSession {
             image_model_router: None,
             compaction_summary_sink: std::sync::Mutex::new(None),
             semantic_edges: std::sync::Mutex::new(None),
+            research_log: std::sync::Mutex::new(None),
             side_question_stream_fn: std::sync::Mutex::new(None),
             agent_dir: None,
             compaction_flight: tokio::sync::Mutex::new(()),

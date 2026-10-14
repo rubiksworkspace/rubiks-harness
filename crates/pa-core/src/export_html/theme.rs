@@ -212,12 +212,12 @@ fn parse_theme_json(raw: &str) -> Result<ExportThemeJson> {
 }
 
 /// The default theme when settings carry none: a light terminal background
-/// (`COLORFGBG`) selects the light theme, everything else gets Prime.
+/// (`COLORFGBG`) selects Rubiks light, everything else gets Rubiks dark.
 pub(crate) fn default_theme_name() -> String {
     if detect_light_terminal_background(std::env::var("COLORFGBG").ok().as_deref()) {
-        "light".to_string()
+        "rubiks-light".to_string()
     } else {
-        "prime".to_string()
+        "rubiks".to_string()
     }
 }
 

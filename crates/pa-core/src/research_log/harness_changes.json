@@ -1,0 +1,48 @@
+{
+  "upstreamRepo": "PrimeIntellect-ai/prime-agent",
+  "upstreamBase": "f2168679806293cd1415f192c17a95a846da3ed1",
+  "layerCodes": "ETCSOVG",
+  "note": "One entry per change on top of upstream. Set `layer` to the ETCSOVG letter the change touches; null means not tagged yet. `commit` is null until the change is committed.",
+  "changes": [
+    {
+      "commit": "a703e18f7d422d1254343e295fcf2d4ebaddd09a",
+      "summary": "Never send telemetry, and keep it off unless turned on",
+      "layer": null
+    },
+    {
+      "commit": "a6213eb06f5cab0b41453583741dc87246ec257f",
+      "summary": "Relicense under GPL-3.0-or-later",
+      "layer": null
+    },
+    {
+      "commit": "48cc3b3ac766f102e8fa99cecb48322c22dc9316",
+      "summary": "Vendor Zed's CLI as the rubiks-ide binary",
+      "layer": null
+    },
+    {
+      "commit": "3996ded8abc97bc41dd9e34ad10b2f797726bda4",
+      "summary": "Turn telemetry on in the onboarding report test",
+      "layer": null
+    },
+    {
+      "commit": "ea573573e9e371ee28884b04d7254eb45491b9b4",
+      "summary": "Add prime-agent data to browse saved sessions",
+      "layer": null
+    },
+    {
+      "commit": null,
+      "summary": "Add prime-agent data harness to browse harness memory and refinements",
+      "layer": null
+    },
+    {
+      "commit": null,
+      "summary": "Rubiks themes and cube mark in the terminal UI, installer and exports",
+      "layer": null
+    },
+    {
+      "commit": null,
+      "summary": "Local research log: run metadata, DeepSeek API layer and harness decisions",
+      "layer": null
+    }
+  ]
+}

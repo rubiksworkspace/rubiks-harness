@@ -242,6 +242,25 @@ pub struct TelemetrySettings {
     pub local_mirror: Option<bool>,
 }
 
+/// `research`: the local research log under `<agentDir>/research/` (see
+/// `crate::research_log`). Every key is optional; the environment overrides
+/// each one.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResearchSettings {
+    /// Unset means on: the log stays on this machine.
+    pub enabled: Option<bool>,
+    /// `metadata` (the default: sizes, hashes, counts, timings) or `content`
+    /// (also prompts, payloads, reasoning, tool output and summaries).
+    pub consent: Option<String>,
+    /// A pseudonymous participant id, recorded with every run.
+    pub participant_id: Option<String>,
+    /// What the participant is working on, recorded with every run.
+    pub task: Option<String>,
+    /// The provider's discounted (off-peak) window in UTC, `HH:MM-HH:MM`.
+    pub off_peak_utc: Option<String>,
+}
+
 /// User-declared MCP server (settings `mcpServers` entry).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "kebab-case")]
@@ -319,6 +338,7 @@ pub struct Settings {
     pub agent_traces: Option<AgentTracesSettings>,
     pub factory: Option<FactorySettings>,
     pub telemetry: Option<TelemetrySettings>,
+    pub research: Option<ResearchSettings>,
     pub branch_summary: Option<BranchSummarySettings>,
     pub retry: Option<RetrySettings>,
     pub provider_backup_model: Option<String>,
