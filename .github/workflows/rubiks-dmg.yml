@@ -1,0 +1,84 @@
+# Builds the "Prime Agent (Rubiks)" DMG for Apple silicon on every push to the
+# gpl-3.0 branch (or by hand from the Actions tab). The DMG holds the release
+# archive `make package` builds, the release installer, and a double-click
+# "Install Prime Agent" script (scripts/release/macos-dmg/). Each run keeps
+# the DMG as a workflow artifact for 30 days, and pushes to gpl-3.0 also
+# replace the "harness-latest" release, so the newest build is always at:
+#   https://github.com/<owner>/<repo>/releases/download/harness-latest/Prime-Agent-Rubiks-arm64.dmg
+name: Prime Agent (Rubiks) DMG
+
+on:
+  push:
+    branches: [gpl-3.0]
+  workflow_dispatch:
+
+# A newer push makes an older build pointless: cancel it.
+concurrency:
+  group: rubiks-harness-dmg-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write # replaces the harness-latest release
+
+jobs:
+  dmg:
+    name: Build DMG (Apple silicon)
+    runs-on: macos-15
+    timeout-minutes: 90
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      # The same toolchain pin as release.yml: the SHA is the version (1.98.1).
+      - uses: dtolnay/rust-toolchain@ce678459e9fc7500d337468f904b95f1b5c10b5e
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+
+      - name: Build and package the release archive
+        # The live model catalog, like the published releases; the offline
+        # snapshot keeps the build going if the catalog cannot be reached.
+        run: make package CATALOG_ASSETS_MODE=network || make package CATALOG_ASSETS_MODE=fixture
+
+      - name: Check the archive installs
+        run: |
+          archive="$(ls target/release-package/prime-agent-*-darwin-arm64.tar.gz)"
+          PRIME_AGENT_ARCHIVE_CHECK=1 sh install-rust.sh --archive "$archive"
+
+      - name: Build the DMG
+        id: dmg
+        run: |
+          archive="$(ls target/release-package/prime-agent-*-darwin-arm64.tar.gz)"
+          stage="target/dmg/Prime Agent (Rubiks)"
+          rm -rf target/dmg
+          mkdir -p "$stage"
+          cp "$archive" install-rust.sh "$stage/"
+          cp "scripts/release/macos-dmg/Install Prime Agent.command" "scripts/release/macos-dmg/README.txt" "$stage/"
+          chmod +x "$stage/Install Prime Agent.command"
+          dmg="target/dmg/Prime-Agent-Rubiks-arm64.dmg"
+          hdiutil create -volname "Prime Agent (Rubiks)" -srcfolder "$stage" -ov -format UDZO "$dmg"
+          ls -lh "$dmg"
+          echo "path=$dmg" >> "$GITHUB_OUTPUT"
+          echo "archive=$(basename "$archive")" >> "$GITHUB_OUTPUT"
+
+      - name: Upload the DMG as a workflow artifact
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: Prime-Agent-Rubiks-arm64-${{ github.sha }}
+          path: ${{ steps.dmg.outputs.path }}
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Publish the harness-latest release
+        if: github.ref == 'refs/heads/gpl-3.0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DMG: ${{ steps.dmg.outputs.path }}
+          ARCHIVE: ${{ steps.dmg.outputs.archive }}
+        run: |
+          gh release delete harness-latest --yes --cleanup-tag || true
+          gh release create harness-latest "$DMG" \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "Prime Agent (Rubiks) — latest gpl-3.0 build" \
+            --notes "Built from ${GITHUB_SHA} (${ARCHIVE}) by run ${GITHUB_RUN_NUMBER}. Apple silicon only. Open the DMG and double-click Install Prime Agent (first time: right-click → Open)."
