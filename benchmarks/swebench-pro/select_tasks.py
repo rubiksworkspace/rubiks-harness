@@ -8,7 +8,7 @@ each repository by a seeded shuffle, so the same seed picks the same tasks.
 
 Usage:
   select_tasks.py --tasks-dir v2/tasks --dataset test.parquet \
-      [--count 20] [--seed 1] [--subset all|hard51] [--instances id1,id2]
+      [--count 100] [--seed 1] [--subset all|hard51] [--instances id1,id2]
 """
 import argparse
 import json
@@ -27,7 +27,7 @@ def main():
     parser.add_argument("--tasks-dir", type=Path, required=True)
     parser.add_argument("--dataset", type=Path, required=True, help="the HuggingFace test split (parquet)")
     parser.add_argument("--hard51", type=Path, help="v2/hard51_ids.txt, for --subset hard51")
-    parser.add_argument("--count", type=int, default=20)
+    parser.add_argument("--count", type=int, default=100)
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--subset", choices=["all", "hard51"], default="all")
     parser.add_argument("--instances", default="", help="comma-separated instance ids (overrides --count)")
