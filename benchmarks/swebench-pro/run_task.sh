@@ -16,8 +16,12 @@
 #           task's own tests/test.sh; reward 1 = resolved
 #
 # Output (all of it is uploaded):
-#   result.json            the run's facts and verdict
-#   model.patch            the agent's diff
+#   result.json            the run's facts and verdicts
+#   model.patch            the agent's diff, corrected: also new files the agent
+#                          wrote under git-ignored paths, minus runtime junk its
+#                          own runs left behind (agent/capture.log lists both)
+#   model.official.patch   the official capture (`git add -A`), graded
+#                          separately into verifier-official/ when it differs
 #   agent/                 the agent's stdout/stderr, kernel bootstrap log
 #   prime-agent/           the harness's whole data dir: research log
 #                          (+ blobs), sessions, session artifacts, harness
@@ -76,9 +80,11 @@ docker run -d --name "$agent" --platform linux/amd64 --network bridge \
 repo_dir="$(docker exec "$agent" sh -c 'cd /app 2>/dev/null || cd /testbed; pwd')"
 log "repository at $repo_dir"
 
-# The kernel venv is built now, while the sandbox still has network.
+# The kernel venv and the skills' Python packages are installed now, while
+# the sandbox still has network (from the repository, so the same skills load
+# as in the session).
 bootstrap_ok=true
-docker exec "$agent" /opt/prime-agent/prime-agent --prime-agent-bootstrap \
+docker exec -w "$repo_dir" "$agent" /opt/prime-agent/prime-agent --prime-agent-bootstrap \
   > "$out/agent/kernel-bootstrap.log" 2>&1 || bootstrap_ok=false
 setup_seconds=$(( $(now) - setup_start ))
 
@@ -95,6 +101,9 @@ else
   inner_timeout=()
   outer_timeout=(timeout -k 30 "$agent_timeout")
 fi
+
+# Files changed after this are the agent's (the patch capture reads it).
+docker exec "$agent" touch /tmp/.sbp-agent-start
 
 log "running Prime Agent ($model, thinking $thinking, ${agent_timeout}s budget)"
 agent_start=$(now)
@@ -124,7 +133,35 @@ log "agent finished: exit $agent_exit after ${agent_seconds}s"
 
 # The official capture (v2/tooling/locked_mini_swe.py): every change, staged.
 docker exec -w "$repo_dir" "$agent" sh -c \
-  'git add -A 2>/dev/null; git diff --cached; git reset -q 2>/dev/null' > "$out/model.patch" 2> "$out/agent/diff-stderr.txt"
+  'git add -A 2>/dev/null; git diff --cached; git reset -q 2>/dev/null' > "$out/model.official.patch" 2> "$out/agent/diff-stderr.txt"
+
+# The corrected capture. `git add -A` skips new files under git-ignored paths
+# (a repository can ignore real source), and keeps whatever the agent's own
+# test runs left behind (database dumps, caches, logs).
+capture='
+marker=/tmp/.sbp-agent-start
+git add -A 2>/dev/null
+find . \( -name .git -o -name node_modules -o -name __pycache__ -o -name .pytest_cache \
+  -o -name .mypy_cache -o -name .tox -o -name .venv -o -name venv -o -name .cache \
+  -o -name coverage -o -name .next -o -name dist -o -name build \) -prune \
+  -o -type f -newer "$marker" -print 2>/dev/null |
+while IFS= read -r file; do
+  if git check-ignore -q -- "$file" 2>/dev/null; then
+    echo "added ignored file: $file" >&2
+    git add -f -- "$file"
+  fi
+done
+git diff --cached --name-only --diff-filter=A | while IFS= read -r file; do
+  case "$file" in
+    *.aof|*.rdb|*.pyc|*.log|*.orig|*.rej|*.swp|.coverage|coverage.xml|nohup.out|\
+    __pycache__/*|*/__pycache__/*|.pytest_cache/*|*/.pytest_cache/*|node_modules/*|*/node_modules/*)
+      echo "dropped runtime file: $file" >&2
+      git reset -q -- "$file" ;;
+  esac
+done
+git diff --cached
+git reset -q 2>/dev/null'
+docker exec -w "$repo_dir" "$agent" sh -c "$capture" > "$out/model.patch" 2> "$out/agent/capture.log"
 
 # Everything the harness wrote, without the rebuildable kernel venv.
 docker exec "$agent" sh -c \
@@ -140,25 +177,43 @@ cleanup
 trap - EXIT
 
 # --- verify -----------------------------------------------------------------
+# Grade one patch on a fresh container with the task's own tests/test.sh.
+grade() {
+  local patch="$1" dir="$2"
+  mkdir -p "$dir"
+  timeout -k 30 "$verify_timeout" docker run --rm --platform linux/amd64 --network bridge \
+    -v "$task_dir/tests:/tests:ro" \
+    -v "$dir:/logs/verifier" \
+    -v "$patch:/tmp/replay.patch:ro" \
+    --entrypoint bash "$image" -c '
+      cd /app 2>/dev/null || cd /testbed
+      if [ -s /tmp/replay.patch ]; then
+        { git apply --verbose /tmp/replay.patch || git apply --3way /tmp/replay.patch || patch --fuzz=3 -p1 -i /tmp/replay.patch; } > /logs/verifier/apply.log 2>&1
+        echo "apply_exit=$?" >> /logs/verifier/apply.log
+      else
+        echo "empty patch" > /logs/verifier/apply.log
+      fi
+      bash /tests/test.sh' > "$dir/test-output.txt" 2>&1
+}
+
 log "grading on a fresh container"
 verify_start=$(now)
-timeout -k 30 "$verify_timeout" docker run --rm --platform linux/amd64 --network bridge \
-  -v "$task_dir/tests:/tests:ro" \
-  -v "$out/verifier:/logs/verifier" \
-  -v "$out/model.patch:/tmp/replay.patch:ro" \
-  --entrypoint bash "$image" -c '
-    cd /app 2>/dev/null || cd /testbed
-    if [ -s /tmp/replay.patch ]; then
-      { git apply --verbose /tmp/replay.patch || git apply --3way /tmp/replay.patch || patch --fuzz=3 -p1 -i /tmp/replay.patch; } > /logs/verifier/apply.log 2>&1
-      echo "apply_exit=$?" >> /logs/verifier/apply.log
-    else
-      echo "empty patch" > /logs/verifier/apply.log
-    fi
-    bash /tests/test.sh' > "$out/verifier/test-output.txt" 2>&1
+grade "$out/model.patch" "$out/verifier"
 verify_exit=$?
 verify_seconds=$(( $(now) - verify_start ))
 reward="$(cat "$out/verifier/reward.txt" 2>/dev/null || echo "")"
 log "reward: ${reward:-none}"
+
+if cmp -s "$out/model.patch" "$out/model.official.patch"; then
+  patch_differs=False
+  reward_official="$reward"
+else
+  patch_differs=True
+  log "grading the official capture too"
+  grade "$out/model.official.patch" "$out/verifier-official"
+  reward_official="$(cat "$out/verifier-official/reward.txt" 2>/dev/null || echo "")"
+  log "official reward: ${reward_official:-none}"
+fi
 
 python3 - "$out/result.json" <<PY
 import json, sys
@@ -170,6 +225,10 @@ json.dump({
     "thinking": "$thinking",
     "resolved": "$reward".strip() == "1",
     "reward": "$reward".strip() or None,
+    "resolved_official": "$reward_official".strip() == "1",
+    "patch_differs_from_official": $patch_differs,
+    "ignored_files_added": sum(1 for line in open("$out/agent/capture.log", errors="replace") if line.startswith("added ignored file")),
+    "runtime_files_dropped": sum(1 for line in open("$out/agent/capture.log", errors="replace") if line.startswith("dropped runtime file")),
     "image_pulled": $( $pull_ok && echo True || echo False ),
     "kernel_bootstrap_ok": $( $bootstrap_ok && echo True || echo False ),
     "agent_exit_code": $agent_exit,

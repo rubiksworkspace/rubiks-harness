@@ -7,7 +7,11 @@
 //!
 //! - An error is detected when a tool result is an error or exits non-zero
 //!   (`tool_error`), a model call fails (`provider_error`), or the same tool
-//!   call with the same arguments runs three times in a row (`loop`).
+//!   call with the same arguments runs three times in a row (`loop`). Agents
+//!   that run commands from Python cells get a successful tool result even
+//!   when the command fails, so the output is read too: a cell that raised, a
+//!   non-zero `exit_code`, a traceback, or failing test output count as a
+//!   failed tool result (see [`output_failure`]).
 //! - A correction answers an open error: the error output reaching the model
 //!   in the next call (`error_message`, for tool errors), an automatic
 //!   provider retry (`retry`, for provider errors), or the user's next
@@ -422,7 +426,12 @@ impl Recorder {
             .or_else(|| raw.as_ref().map(|raw| raw.len() as u64))
             .unwrap_or(shown.len() as u64);
         let exit_code = exit_code(&shown);
-        let failed = is_error || exit_code.is_some_and(|code| code != 0);
+        let failure = if is_error {
+            Some("tool_error")
+        } else {
+            output_failure(&shown, details)
+        };
+        let failed = failure.is_some();
         let mut content = vec![("shown", shown.clone())];
         if let Some(raw) = raw {
             content.push(("raw", raw));
@@ -435,6 +444,7 @@ impl Recorder {
                 "toolCallId": tool_call_id,
                 "isError": is_error,
                 "exitCode": exit_code,
+                "failure": failure,
                 "status": details["status"],
                 "durationMs": details["durationMs"],
                 "shownBytes": shown.len(),
@@ -463,6 +473,7 @@ impl Recorder {
                     "tool": tool_name,
                     "toolCallId": tool_call_id,
                     "passed": !failed,
+                    "failure": failure,
                     "exitCode": exit_code,
                     "durationMs": details["durationMs"],
                 }),
@@ -472,7 +483,12 @@ impl Recorder {
         if failed {
             self.error_detected(
                 "tool_error",
-                json!({ "tool": tool_name, "toolCallId": tool_call_id, "exitCode": exit_code }),
+                json!({
+                    "tool": tool_name,
+                    "toolCallId": tool_call_id,
+                    "exitCode": exit_code,
+                    "failure": failure,
+                }),
             );
         }
     }
@@ -819,15 +835,56 @@ fn verification_kind(command: &str) -> Option<&'static str> {
         .map(|(kind, _)| *kind)
 }
 
-/// The exit code the bash tool appends to a failed command's output.
+/// The exit code in a tool's output: the bash tool's "Command exited with
+/// code N", or the last `exit_code=N` a Python cell printed (`BashResult`).
 fn exit_code(shown: &str) -> Option<i64> {
+    static PRINTED: OnceLock<Regex> = OnceLock::new();
     let marker = "Command exited with code ";
-    let start = shown.rfind(marker)? + marker.len();
-    let digits: String = shown[start..]
-        .chars()
-        .take_while(|character| character.is_ascii_digit() || *character == '-')
-        .collect();
-    digits.parse().ok()
+    if let Some(start) = shown.rfind(marker).map(|start| start + marker.len()) {
+        let digits: String = shown[start..]
+            .chars()
+            .take_while(|character| character.is_ascii_digit() || *character == '-')
+            .collect();
+        return digits.parse().ok();
+    }
+    let printed =
+        PRINTED.get_or_init(|| Regex::new(r"exit_code[=:]\s*(-?\d+)").expect("valid pattern"));
+    let mut last = None;
+    for found in printed.captures_iter(shown).flatten() {
+        last = found.get(1).and_then(|code| code.as_str().parse().ok());
+    }
+    last
+}
+
+/// Why a successful tool result still failed, read from its output: the cell
+/// raised (`python_error`), a command it ran exited non-zero
+/// (`command_exit`), it printed a traceback (`traceback`), or a test runner
+/// reported failures (`test_failure`).
+fn output_failure(shown: &str, details: &Value) -> Option<&'static str> {
+    static PATTERNS: OnceLock<Vec<(&'static str, Regex)>> = OnceLock::new();
+    let patterns = PATTERNS.get_or_init(|| {
+        [
+            ("traceback", r"Traceback \(most recent call last\)"),
+            // go test, pytest, mocha/jest summaries.
+            (
+                "test_failure",
+                r"(?m)^--- FAIL:|^FAIL\s|^FAILED\s|\b\d+ failed\b|\b\d+ failing\b|Tests:\s+\d+ failed",
+            ),
+        ]
+        .into_iter()
+        .map(|(kind, pattern)| (kind, Regex::new(pattern).expect("valid failure pattern")))
+        .collect()
+    });
+    if details["status"].as_str() == Some("error") {
+        return Some("python_error");
+    }
+    if exit_code(shown).is_some_and(|code| code != 0) {
+        return Some("command_exit");
+    }
+    patterns
+        .iter()
+        .find(|(_, pattern)| pattern.is_match(shown).unwrap_or(false))
+        .map(|(kind, _)| *kind)
 }
 
 fn truncate(text: &str, max: usize) -> String {
@@ -862,5 +919,33 @@ mod tests {
         assert_eq!(verification_kind("ls -la"), None);
         assert_eq!(exit_code("boom\n\nCommand exited with code 2"), Some(2));
         assert_eq!(exit_code("all good"), None);
+        assert_eq!(
+            exit_code("BashResult(exit_code=0, output='')\nBashResult(exit_code=2, output='x')"),
+            Some(2)
+        );
+    }
+
+    #[test]
+    fn reads_failures_out_of_python_cells() {
+        let ok = serde_json::json!({ "status": "ok" });
+        let failures = [
+            ("BashResult(exit_code=1, output='nope')", "command_exit"),
+            ("Traceback (most recent call last):\n  File x", "traceback"),
+            ("--- FAIL: TestLoad (0.07s)", "test_failure"),
+            ("===== 2 failed, 10 passed in 3.1s =====", "test_failure"),
+            ("  3 failing", "test_failure"),
+        ];
+        for (output, kind) in failures {
+            assert_eq!(output_failure(output, &ok), Some(kind), "{output}");
+        }
+        assert_eq!(output_failure("10 passed", &ok), None);
+        assert_eq!(
+            output_failure("BashResult(exit_code=0, output='ok')", &ok),
+            None
+        );
+        assert_eq!(
+            output_failure("", &serde_json::json!({ "status": "error" })),
+            Some("python_error")
+        );
     }
 }

@@ -322,14 +322,33 @@ fn main_impl(args: &[String], runtime: &dyn mode::Runtime) -> Result<i32, String
 }
 
 /// Prepare the kernel runtime at install time: resolve or bootstrap the kernel
-/// Python and print its path. Failures print the error and exit 1.
+/// Python, with the Python packages of the skills a session in this directory
+/// loads, and print its path. Installing the skills here means a first session
+/// needs no network for them. Failures print the error and exit 1.
 fn run_runtime_bootstrap() -> Result<i32, String> {
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .map_err(|error| error.to_string())?;
+    let cwd = std::env::current_dir().map_err(|error| error.to_string())?;
+    let python_skills = match pa_core::resources::load_resources(
+        pa_core::resources::ResourceLoaderOptions::new(cwd, crate::config::get_agent_dir()),
+    ) {
+        Ok(resources) => {
+            pa_core::session_engine::runtime_wiring::kernel_python_skills(&resources.skills)
+        }
+        Err(error) => {
+            eprintln!(
+                "Warning: skills not loaded, bootstrapping the kernel without them: {error:#}"
+            );
+            Vec::new()
+        }
+    };
     match runtime.block_on(pa_core::kernel::ensure_kernel_python(
-        pa_core::kernel::EnsureKernelPythonOptions::default(),
+        pa_core::kernel::EnsureKernelPythonOptions {
+            python_skills,
+            on_progress: None,
+        },
     )) {
         Ok(python) => {
             println!("kernel python: {}", python.display());

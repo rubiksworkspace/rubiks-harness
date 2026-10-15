@@ -25,9 +25,14 @@ The SWE-bench Pro V2 locked protocol:
    only exit is `egress_proxy.py`, which reaches `api.deepseek.com` and
    refuses everything else (every attempt is logged). Prime Agent runs
    headless (`prime-agent -p`) on the task's `instruction.md`, 50 minutes at
-   most. The answer is the repository's `git diff`, captured the official way.
-3. **Verify**: a fresh container from the same image applies the diff and runs
-   the task's own `tests/test.sh`; reward 1 means resolved.
+   most. The diff is captured twice: the official way (`git add -A; git diff
+   --cached`), and corrected: new files the agent wrote that `.gitignore`
+   hides are added, and runtime junk (`*.aof`, `*.pyc`, logs, caches) is
+   dropped.
+3. **Verify**: a fresh container from the same image applies the corrected
+   diff and runs the task's own `tests/test.sh`; reward 1 means resolved.
+   When the official diff differs, it is graded too, so both scores are
+   reported (`resolved` and `resolved_official`).
 
 ## What is kept
 
@@ -37,11 +42,13 @@ Per task (artifact `task-<instance id>`):
 |---|---|
 | `result.json` | verdict, timings, exit codes, patch size |
 | `meta.json` | instance id, repository, language |
-| `model.patch` | the agent's diff |
+| `model.patch` | the agent's diff (corrected capture, the one graded as `resolved`) |
+| `model.official.patch` | the diff captured the official way |
 | `prime-agent/` | the harness's whole data dir: `research/` (research log + blobs, with content consent), `sessions/`, `session-artifacts/`, `harness/` (memory and refinements), `logs/` |
-| `agent/` | the agent's stdout and stderr, kernel bootstrap and image pull logs |
+| `agent/` | the agent's stdout and stderr, kernel bootstrap, image pull and capture logs (`capture.log`: files added or dropped by the corrected capture) |
 | `egress.jsonl` | every connection the agent's sandbox attempted |
 | `verifier/` | test output, `output.json`, `reward.txt`, patch apply log |
+| `verifier-official/` | the same for `model.official.patch`, only when the two diffs differ |
 
 The run's `swebench-pro-results` artifact merges every task with
 `summary.csv` (one row per task: verdict next to the research-log metrics and

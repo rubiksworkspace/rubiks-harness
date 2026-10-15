@@ -310,7 +310,7 @@ async fn a_run_records_calls_decisions_and_their_pairing() {
     assert_eq!(
         by_type("verification")[0],
         &json!({"kind": "test", "command": "cargo test -p parser", "tool": "bash",
-                "toolCallId": "c1", "passed": false, "exitCode": 101, "durationMs": null})
+                "toolCallId": "c1", "passed": false, "failure": "tool_error", "exitCode": 101, "durationMs": null})
     );
     let errors = by_type("error.detected");
     assert_eq!(
