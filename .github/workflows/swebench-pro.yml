@@ -158,6 +158,15 @@ jobs:
           printf '%s\n' '${{ toJSON(matrix) }}' > "out/${{ matrix.id }}/meta.json"
           benchmarks/swebench-pro/run_task.sh "sbp/v2/tasks/${{ matrix.id }}" bench/harness bench/uv "out/${{ matrix.id }}"
 
+      # The task containers run as root, and test.sh writes root-only files;
+      # the upload runs as the runner user and must be able to read them all.
+      - name: Make the results readable
+        if: always()
+        run: |
+          [ -d out ] || exit 0
+          sudo chown -R "$(id -u):$(id -g)" out
+          chmod -R u+rwX,go+rX out
+
       - name: Upload everything for this task
         if: always()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
