@@ -110,7 +110,8 @@ jobs:
         run: |
           git clone -q --filter=blob:none --sparse "$SBP_REPO" sbp
           git -C sbp checkout -q "$SBP_COMMIT"
-          git -C sbp sparse-checkout set v2/tasks v2/hard51_ids.txt
+          # Folders only (cone mode): v2/ holds the tasks and hard51_ids.txt.
+          git -C sbp sparse-checkout set v2
           curl -fsSL -o test.parquet \
             https://huggingface.co/api/datasets/ScaleAI/SWE-bench_Pro/parquet/default/test/0.parquet
           python3 -m pip install -q pyarrow
