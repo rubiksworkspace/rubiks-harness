@@ -1,0 +1,193 @@
+# Runs the Rubiks harness (Prime Agent) on SWE-bench Pro V2 and keeps every
+# piece of data the harness produces. Runs on every push to the `benchmark`
+# branch (40 tasks), or by hand with your own task count, tasks or model.
+#
+#   build      the static Linux harness + uv, and the task list
+#   task (×N)  one job per task, 20 at a time: run_task.sh (setup → offline
+#              agent with only the DeepSeek API reachable → grade on a fresh
+#              container with the task's own tests), then upload everything
+#   summary    one CSV/markdown summary and a single download with all tasks
+#
+# Needs the repository secret DEEPSEEK_API_KEY. The repository is public:
+# the uploaded results (agent commands, patches, prompts and reasoning) can
+# be downloaded by any signed-in GitHub user.
+name: SWE-bench Pro
+
+on:
+  push:
+    branches: [benchmark]
+  workflow_dispatch:
+    inputs:
+      count:
+        description: Number of tasks (spread over the 11 repositories; max 256)
+        default: "40"
+      instances:
+        description: Exact instance ids, comma-separated (overrides count)
+        default: ""
+      subset:
+        description: Task pool
+        type: choice
+        options: [all, hard51]
+        default: all
+      model:
+        description: DeepSeek model
+        type: choice
+        options: [deepseek-v4-flash, deepseek-v4-pro]
+        default: deepseek-v4-flash
+      seed:
+        description: Task selection seed (same seed, same tasks)
+        default: "1"
+
+# One run at a time: a newer push waits for the running one instead of
+# cancelling it (a cancelled run still bills its model calls).
+concurrency:
+  group: swebench-pro
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  # SWE-bench Pro V2, pinned: the tasks, verifiers and image names.
+  SBP_REPO: https://github.com/scaleapi/SWE-bench_Pro-os.git
+  SBP_COMMIT: 66f92766bba642462d4bbe5479e83f91f9211862
+  COUNT: ${{ inputs.count || '40' }}
+  INSTANCES: ${{ inputs.instances || '' }}
+  SUBSET: ${{ inputs.subset || 'all' }}
+  MODEL: ${{ inputs.model || 'deepseek-v4-flash' }}
+  SEED: ${{ inputs.seed || '1' }}
+
+jobs:
+  build:
+    name: Build harness and pick tasks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    outputs:
+      tasks: ${{ steps.pick.outputs.tasks }}
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      # The same toolchain pin as release.yml: the SHA is the version (1.98.1).
+      - uses: dtolnay/rust-toolchain@ce678459e9fc7500d337468f904b95f1b5c10b5e
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          key: musl
+
+      - name: Build static prime-agent (musl)
+        # Static, so one binary runs in every task image whatever its libc.
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q musl-tools
+          rustup target add x86_64-unknown-linux-musl
+          export CC_x86_64_unknown_linux_musl=musl-gcc
+          cargo build --release --locked -p pa-cli --target x86_64-unknown-linux-musl
+          file target/x86_64-unknown-linux-musl/release/prime-agent
+
+      - name: Stage the harness release layout
+        run: |
+          python3 scripts/release/bundle_catalog.py generate --network --out target/catalog-assets \
+            || python3 scripts/release/bundle_catalog.py generate --fixture --out target/catalog-assets
+          python3 benchmarks/swebench-pro/stage_harness.py \
+            --binary target/x86_64-unknown-linux-musl/release/prime-agent \
+            --catalog-assets target/catalog-assets --out target/bench/harness
+          curl -fsSL https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-unknown-linux-musl.tar.gz \
+            | tar -xz -C target/bench --strip-components=1
+          target/bench/harness/prime-agent --version
+          target/bench/uv --version
+          # Artifacts drop file modes: ship a tarball.
+          tar -C target/bench -czf bench-harness.tar.gz harness uv
+
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: bench-harness
+          path: bench-harness.tar.gz
+          retention-days: 7
+
+      - name: Pick the tasks
+        id: pick
+        run: |
+          git clone -q --filter=blob:none --sparse "$SBP_REPO" sbp
+          git -C sbp checkout -q "$SBP_COMMIT"
+          git -C sbp sparse-checkout set v2/tasks v2/hard51_ids.txt
+          curl -fsSL -o test.parquet \
+            https://huggingface.co/api/datasets/ScaleAI/SWE-bench_Pro/parquet/default/test/0.parquet
+          python3 -m pip install -q pyarrow
+          tasks="$(python3 benchmarks/swebench-pro/select_tasks.py \
+            --tasks-dir sbp/v2/tasks --dataset test.parquet --hard51 sbp/v2/hard51_ids.txt \
+            --count "$COUNT" --seed "$SEED" --subset "$SUBSET" --instances "$INSTANCES")"
+          echo "tasks=$tasks" >> "$GITHUB_OUTPUT"
+
+  task:
+    name: ${{ matrix.id }}
+    needs: build
+    runs-on: ubuntu-24.04
+    # The protocol's 50-minute agent budget, setup and grading.
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        include: ${{ fromJSON(needs.build.outputs.tasks) }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
+          df -h /
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: bench-harness
+
+      - name: Unpack the harness and fetch the task
+        run: |
+          mkdir -p bench && tar -xzf bench-harness.tar.gz -C bench
+          git clone -q --filter=blob:none --sparse "$SBP_REPO" sbp
+          git -C sbp checkout -q "$SBP_COMMIT"
+          git -C sbp sparse-checkout set "v2/tasks/${{ matrix.id }}"
+
+      - name: Run and grade
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+        run: |
+          mkdir -p "out/${{ matrix.id }}"
+          printf '%s\n' '${{ toJSON(matrix) }}' > "out/${{ matrix.id }}/meta.json"
+          benchmarks/swebench-pro/run_task.sh "sbp/v2/tasks/${{ matrix.id }}" bench/harness bench/uv "out/${{ matrix.id }}"
+
+      - name: Upload everything for this task
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: task-${{ matrix.id }}
+          path: out/
+          retention-days: 30
+          include-hidden-files: true
+
+  summary:
+    name: Summary
+    needs: task
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: task-*
+          path: results/tasks
+          merge-multiple: true
+
+      - name: Summarize
+        run: |
+          python3 benchmarks/swebench-pro/summarize.py results/tasks results
+          cat results/summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: swebench-pro-results
+          path: results/
+          retention-days: 90
+          include-hidden-files: true
