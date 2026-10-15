@@ -6,7 +6,7 @@ in GitHub Actions and keeps everything the harness produces.
 
 ## Running it
 
-- Push to the `benchmark` branch: 40 tasks, spread over the 11 repositories,
+- Push to the `benchmark` branch: 20 tasks, spread over the 11 repositories,
   on DeepSeek V4 Flash.
 - Or start it by hand (once the workflow is on the default branch, or with
   `gh workflow run swebench-pro.yml --ref benchmark -f count=50`) to choose
