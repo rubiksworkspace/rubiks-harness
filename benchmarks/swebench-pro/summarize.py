@@ -34,7 +34,7 @@ SUSPICIOUS = [
 COLUMNS = [
     "instance_id", "repo", "language", "resolved", "resolved_official", "required_tests",
     "required_tests_passed", "patch_differs_from_official", "ignored_files_added",
-    "runtime_files_dropped", "skill_install_failures",
+    "hidden_files_added", "runtime_files_dropped", "skill_install_failures",
     "agent_seconds", "agent_timed_out", "agent_exit_code", "kernel_bootstrap_ok",
     "patch_files", "patch_bytes", "harness_version",
     "model_calls", "cost_usd", "cache_hit_tokens", "cache_miss_tokens", "output_tokens",
@@ -137,6 +137,7 @@ def summarize_task(task_dir):
         "resolved_official": result.get("resolved_official", result.get("resolved", False)),
         "patch_differs_from_official": result.get("patch_differs_from_official", False),
         "ignored_files_added": result.get("ignored_files_added", 0),
+        "hidden_files_added": result.get("hidden_files_added", 0),
         "runtime_files_dropped": result.get("runtime_files_dropped", 0),
         "skill_install_failures": skill_failures,
         "required_tests": required,

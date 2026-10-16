@@ -136,24 +136,44 @@ docker exec -w "$repo_dir" "$agent" sh -c \
   'git add -A 2>/dev/null; git diff --cached; git reset -q 2>/dev/null' > "$out/model.official.patch" 2> "$out/agent/diff-stderr.txt"
 
 # The corrected capture. `git add -A` skips new files under git-ignored paths
-# (a repository can ignore real source), and keeps whatever the agent's own
-# test runs left behind (database dumps, caches, logs).
+# (a repository can ignore real source), skips files git hides some other
+# way (sparse checkout, skip-worktree or assume-unchanged index flags: both
+# ansible tasks of the 100-task run came out empty although the agent wrote
+# the module), and keeps whatever the agent's own test runs left behind
+# (database dumps, caches, logs). So every file the agent wrote that is still
+# not staged after `git add -A` is added by force, whatever hid it.
 capture='
 marker=/tmp/.sbp-agent-start
+echo "git: core.sparseCheckout=$(git config core.sparseCheckout) hidden index entries=$(git ls-files -v | grep -c "^[a-zS]")" >&2
 git add -A 2>/dev/null
 find . \( -name .git -o -name node_modules -o -name __pycache__ -o -name .pytest_cache \
-  -o -name .mypy_cache -o -name .tox -o -name .venv -o -name venv -o -name .cache \
-  -o -name coverage -o -name .next -o -name dist -o -name build \) -prune \
+  -o -name .mypy_cache -o -name .hypothesis -o -name .tox -o -name .venv -o -name venv \
+  -o -name .cache -o -name coverage -o -name .next -o -name dist -o -name build \) -prune \
   -o -type f -newer "$marker" -print 2>/dev/null |
 while IFS= read -r file; do
+  file=${file#./}
+  flag=$(git ls-files -v -- "$file" 2>/dev/null | cut -c1)
+  case "$flag" in
+    H|"") ;;
+    *)
+      echo "unhid index entry ($flag): $file" >&2
+      git update-index --no-skip-worktree --no-assume-unchanged -- "$file"
+      git add -f --sparse -- "$file" 2>/dev/null || git add -f -- "$file"
+      continue ;;
+  esac
+  [ -z "$(git diff --cached --name-only -- "$file")" ] || continue
+  [ -n "$flag" ] && continue
   if git check-ignore -q -- "$file" 2>/dev/null; then
     echo "added ignored file: $file" >&2
-    git add -f -- "$file"
+  else
+    echo "added hidden file: $file" >&2
   fi
+  git add -f --sparse -- "$file" 2>/dev/null || git add -f -- "$file"
 done
 git diff --cached --name-only --diff-filter=A | while IFS= read -r file; do
   case "$file" in
     *.aof|*.rdb|*.pyc|*.log|*.orig|*.rej|*.swp|.coverage|coverage.xml|nohup.out|\
+    .hypothesis/*|*/.hypothesis/*|\
     __pycache__/*|*/__pycache__/*|.pytest_cache/*|*/.pytest_cache/*|node_modules/*|*/node_modules/*)
       echo "dropped runtime file: $file" >&2
       git reset -q -- "$file" ;;
@@ -229,6 +249,7 @@ json.dump({
     "patch_differs_from_official": $patch_differs,
     "ignored_files_added": sum(1 for line in open("$out/agent/capture.log", errors="replace") if line.startswith("added ignored file")),
     "runtime_files_dropped": sum(1 for line in open("$out/agent/capture.log", errors="replace") if line.startswith("dropped runtime file")),
+    "hidden_files_added": sum(1 for line in open("$out/agent/capture.log", errors="replace") if line.startswith(("added hidden file", "unhid index entry"))),
     "image_pulled": $( $pull_ok && echo True || echo False ),
     "kernel_bootstrap_ok": $( $bootstrap_ok && echo True || echo False ),
     "agent_exit_code": $agent_exit,
