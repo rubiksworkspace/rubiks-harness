@@ -8,8 +8,12 @@ each repository by a seeded shuffle, so the same seed picks the same tasks.
 
 Usage:
   select_tasks.py --tasks-dir v2/tasks --dataset test.parquet \
-      [--count 100] [--seed 1] [--subset all|hard51] [--instances id1,id2]
+      [--count 100] [--seed 1] [--subset all|hard51|harness100] [--instances id1,id2]
+
+harness100 is the list pick_harness_tasks.py wrote (harness100.csv, next to
+this script): hard tasks that stress the harness rather than the model.
 """
+import csv
 import argparse
 import json
 import random
@@ -29,7 +33,7 @@ def main():
     parser.add_argument("--hard51", type=Path, help="v2/hard51_ids.txt, for --subset hard51")
     parser.add_argument("--count", type=int, default=100)
     parser.add_argument("--seed", type=int, default=1)
-    parser.add_argument("--subset", choices=["all", "hard51"], default="all")
+    parser.add_argument("--subset", choices=["all", "hard51", "harness100"], default="all")
     parser.add_argument("--instances", default="", help="comma-separated instance ids (overrides --count)")
     args = parser.parse_args()
 
@@ -39,6 +43,10 @@ def main():
         if args.hard51 is None:
             sys.exit("--subset hard51 needs --hard51")
         wanted = {line.strip() for line in args.hard51.read_text().splitlines() if line.strip()}
+        available = [task for task in available if task in wanted]
+    elif args.subset == "harness100":
+        with Path(__file__).with_name("harness100.csv").open() as handle:
+            wanted = {row["instance_id"] for row in csv.DictReader(handle)}
         available = [task for task in available if task in wanted]
 
     if args.instances.strip():

@@ -6,14 +6,40 @@ in GitHub Actions and keeps everything the harness produces.
 
 ## Running it
 
-- Push to the `benchmark` branch: 100 tasks, spread over the 11 repositories,
-  on DeepSeek V4 Flash.
+- Push to the `benchmark` branch: the 100 tasks of `harness100.csv` on
+  DeepSeek V4 Flash.
 - Or start it by hand (once the workflow is on the default branch, or with
   `gh workflow run swebench-pro.yml --ref benchmark -f count=50`) to choose
-  the task count, exact instance ids, the HARD-51 subset, the model, or the
-  selection seed.
+  the task count, exact instance ids, the task pool (`harness100`, `all`,
+  `hard51`), the model, or the selection seed.
 
 The repository secret `DEEPSEEK_API_KEY` must be set.
+
+## The harness100 task pool
+
+On a random 100 tasks the model resolved 97: the task statements spell out
+requirements and interfaces, so those tasks mostly measure whether the model
+can implement a spec. `pick_harness_tasks.py` picks tasks whose reference fix
+is large in the ways the harness has to carry, ranking each stressor against
+all 642 tasks (top quarter counts):
+
+| Stressor | Exercises in the harness |
+|---|---|
+| files changed | multi-file navigation and search |
+| directories changed | cross-module changes, context management |
+| lines changed | long edits, edit-tool robustness, long horizon |
+| new files | creating files, project structure, patch capture |
+| failing tests to fix | test loops, error detection and correction |
+| HARD-51 | the benchmark's own hard subset |
+
+Every stressor gets its best tasks first, then the list fills by overall
+score, at most 12 tasks per repository. Tasks an earlier run already resolved
+are left out, since they no longer separate one harness from another. To
+rebuild it (from a checkout of SWE-bench_Pro-os and the dataset parquet):
+
+    uv run --with pyarrow benchmarks/swebench-pro/pick_harness_tasks.py \
+      --dataset test.parquet --tasks-dir sbp/v2/tasks --hard51 sbp/v2/hard51_ids.txt \
+      --exclude <earlier run>/tasks.jsonl
 
 ## What one task does (`run_task.sh`)
 

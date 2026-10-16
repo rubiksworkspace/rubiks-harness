@@ -1,6 +1,7 @@
 # Runs the Rubiks harness (Prime Agent) on SWE-bench Pro V2 and keeps every
 # piece of data the harness produces. Runs on every push to the `benchmark`
-# branch (100 tasks), or by hand with your own task count, tasks or model.
+# branch (the 100 harness-stressing tasks of harness100.csv), or by hand with
+# your own task count, tasks, task pool or model.
 #
 #   build      the static Linux harness + uv, and the task list
 #   task (×N)  one job per task, 20 at a time: run_task.sh (setup → offline
@@ -27,8 +28,8 @@ on:
       subset:
         description: Task pool
         type: choice
-        options: [all, hard51]
-        default: all
+        options: [harness100, all, hard51]
+        default: harness100
       model:
         description: DeepSeek model
         type: choice
@@ -53,7 +54,7 @@ env:
   SBP_COMMIT: 66f92766bba642462d4bbe5479e83f91f9211862
   COUNT: ${{ inputs.count || '100' }}
   INSTANCES: ${{ inputs.instances || '' }}
-  SUBSET: ${{ inputs.subset || 'all' }}
+  SUBSET: ${{ inputs.subset || 'harness100' }}
   MODEL: ${{ inputs.model || 'deepseek-v4-flash' }}
   SEED: ${{ inputs.seed || '1' }}
 
