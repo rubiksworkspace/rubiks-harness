@@ -13,7 +13,10 @@ in GitHub Actions and keeps everything the harness produces.
   the task count, exact instance ids, the task pool (`harness100`, `all`,
   `hard51`), the model, or the selection seed.
 
-The repository secret `DEEPSEEK_API_KEY` must be set.
+The repository secret `OPENROUTER_API_KEY` must be set (the model runs as
+`deepseek/deepseek-v4-flash` on OpenRouter). To call DeepSeek directly
+instead, start the run by hand with `provider: deepseek` and set
+`DEEPSEEK_API_KEY`.
 
 ## The harness100 task pool
 
@@ -48,7 +51,7 @@ The SWE-bench Pro V2 locked protocol:
 1. **Setup** (network on): pull `ghcr.io/scaleapi/swe-bench_pro-v2:<id>`, mount
    the static harness, prepare its Python kernel.
 2. **Agent** (network off): the container moves to an internal network whose
-   only exit is `egress_proxy.py`, which reaches `api.deepseek.com` and
+   only exit is `egress_proxy.py`, which reaches the model API (`openrouter.ai`) and
    refuses everything else (every attempt is logged). Prime Agent runs
    headless (`prime-agent -p`) on the task's `instruction.md`, 50 minutes at
    most. The diff is captured twice: the official way (`git add -A; git diff

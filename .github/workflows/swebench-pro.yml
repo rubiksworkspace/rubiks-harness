@@ -9,7 +9,8 @@
 #              container with the task's own tests), then upload everything
 #   summary    one CSV/markdown summary and a single download with all tasks
 #
-# Needs the repository secret DEEPSEEK_API_KEY. The repository is public:
+# Needs the repository secret OPENROUTER_API_KEY (or DEEPSEEK_API_KEY when
+# the provider is deepseek). The repository is public:
 # the uploaded results (agent commands, patches, prompts and reasoning) can
 # be downloaded by any signed-in GitHub user.
 name: SWE-bench Pro
@@ -30,6 +31,11 @@ on:
         type: choice
         options: [harness100, all, hard51]
         default: harness100
+      provider:
+        description: Model API (OpenRouter, or DeepSeek directly)
+        type: choice
+        options: [openrouter, deepseek]
+        default: openrouter
       model:
         description: DeepSeek model
         type: choice
@@ -55,6 +61,7 @@ env:
   COUNT: ${{ inputs.count || '100' }}
   INSTANCES: ${{ inputs.instances || '' }}
   SUBSET: ${{ inputs.subset || 'harness100' }}
+  PROVIDER: ${{ inputs.provider || 'openrouter' }}
   MODEL: ${{ inputs.model || 'deepseek-v4-flash' }}
   SEED: ${{ inputs.seed || '1' }}
 
@@ -153,6 +160,7 @@ jobs:
 
       - name: Run and grade
         env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
         run: |
           mkdir -p "out/${{ matrix.id }}"

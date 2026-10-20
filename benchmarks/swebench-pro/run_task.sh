@@ -4,8 +4,9 @@
 #
 #   run_task.sh <task dir> <harness dir> <uv binary> <output dir>
 #
-# Environment: DEEPSEEK_API_KEY (required), MODEL (default deepseek-v4-flash),
-# THINKING (default high), AGENT_TIMEOUT_SEC (default 3000, the protocol's
+# Environment: PROVIDER (openrouter, the default, or deepseek) and its key
+# (OPENROUTER_API_KEY or DEEPSEEK_API_KEY), MODEL (default deepseek-v4-flash;
+# through OpenRouter it runs as deepseek/<model>), THINKING (default high), AGENT_TIMEOUT_SEC (default 3000, the protocol's
 # 50 minutes), VERIFY_TIMEOUT_SEC (default 3000).
 #
 # Phases (SWE-bench Pro V2 locked protocol, v2/README.md):
@@ -36,7 +37,17 @@ uv_bin="$(cd "$(dirname "$3")" && pwd)/$(basename "$3")"
 out="$(mkdir -p "$4" && cd "$4" && pwd)"
 here="$(cd "$(dirname "$0")" && pwd)"
 
+provider="${PROVIDER:-openrouter}"
 model="${MODEL:-deepseek-v4-flash}"
+case "$provider" in
+  openrouter) api_host=openrouter.ai; key_var=OPENROUTER_API_KEY; model="deepseek/${model#deepseek/}" ;;
+  deepseek) api_host=api.deepseek.com; key_var=DEEPSEEK_API_KEY ;;
+  *) echo "unknown PROVIDER: $provider (openrouter or deepseek)" >&2; exit 2 ;;
+esac
+if [ -z "${!key_var:-}" ]; then
+  echo "$key_var is not set" >&2
+  exit 2
+fi
 thinking="${THINKING:-high}"
 agent_timeout="${AGENT_TIMEOUT_SEC:-3000}"
 verify_timeout="${VERIFY_TIMEOUT_SEC:-3000}"
@@ -68,7 +79,7 @@ docker pull --platform linux/amd64 "$image" > "$out/agent/pull.log" 2>&1 || pull
 docker network create --internal "$net" > /dev/null
 docker run -d --name "$egress" --network bridge \
   -v "$here/egress_proxy.py:/egress_proxy.py:ro" \
-  python:3.12-alpine python /egress_proxy.py api.deepseek.com > /dev/null
+  python:3.12-alpine python /egress_proxy.py "$api_host" > /dev/null
 docker network connect --alias egress "$net" "$egress"
 
 docker run -d --name "$agent" --platform linux/amd64 --network bridge \
@@ -108,7 +119,7 @@ docker exec "$agent" touch /tmp/.sbp-agent-start
 log "running Prime Agent ($model, thinking $thinking, ${agent_timeout}s budget)"
 agent_start=$(now)
 "${outer_timeout[@]}" docker exec -w "$repo_dir" \
-  -e DEEPSEEK_API_KEY \
+  -e "$key_var" \
   -e HTTPS_PROXY=http://egress:8888 -e https_proxy=http://egress:8888 \
   -e HTTP_PROXY=http://egress:8888 -e http_proxy=http://egress:8888 \
   -e NO_PROXY=localhost,127.0.0.1 -e no_proxy=localhost,127.0.0.1 \
@@ -119,7 +130,7 @@ agent_start=$(now)
   -e PRIME_AGENT_TASK="$instance_id" \
   "$agent" "${inner_timeout[@]}" \
   /opt/prime-agent/prime-agent -p --offline \
-    --provider deepseek --model "$model" --thinking "$thinking" \
+    --provider "$provider" --model "$model" --thinking "$thinking" \
     "$(cat "$task_dir/instruction.md")" \
   > "$out/agent/stdout.txt" 2> "$out/agent/stderr.txt"
 agent_exit=$?
@@ -241,6 +252,7 @@ patch = open("$out/model.patch", errors="replace").read()
 json.dump({
     "instance_id": "$instance_id",
     "image": "$image",
+    "provider": "$provider",
     "model": "$model",
     "thinking": "$thinking",
     "resolved": "$reward".strip() == "1",
