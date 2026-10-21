@@ -6,7 +6,9 @@
 #
 # Environment: PROVIDER (openrouter, the default, or deepseek) and its key
 # (OPENROUTER_API_KEY or DEEPSEEK_API_KEY), MODEL (default deepseek-v4-flash;
-# through OpenRouter it runs as deepseek/<model>), THINKING (default high), AGENT_TIMEOUT_SEC (default 3000, the protocol's
+# OpenRouter takes any of its ids, such as qwen/qwen3-coder-next, and runs a
+# bare name as deepseek/<model>), THINKING (default high, clamped to what the
+# model supports), AGENT_TIMEOUT_SEC (default 3000, the protocol's
 # 50 minutes), VERIFY_TIMEOUT_SEC (default 3000).
 #
 # Phases (SWE-bench Pro V2 locked protocol, v2/README.md):
@@ -40,7 +42,7 @@ here="$(cd "$(dirname "$0")" && pwd)"
 provider="${PROVIDER:-openrouter}"
 model="${MODEL:-deepseek-v4-flash}"
 case "$provider" in
-  openrouter) api_host=openrouter.ai; key_var=OPENROUTER_API_KEY; model="deepseek/${model#deepseek/}" ;;
+  openrouter) api_host=openrouter.ai; key_var=OPENROUTER_API_KEY; case "$model" in */*) ;; *) model="deepseek/$model" ;; esac ;;
   deepseek) api_host=api.deepseek.com; key_var=DEEPSEEK_API_KEY ;;
   *) echo "unknown PROVIDER: $provider (openrouter or deepseek)" >&2; exit 2 ;;
 esac

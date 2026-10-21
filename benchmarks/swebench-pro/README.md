@@ -18,6 +18,14 @@ The repository secret `OPENROUTER_API_KEY` must be set (the model runs as
 instead, start the run by hand with `provider: deepseek` and set
 `DEEPSEEK_API_KEY`.
 
+Any other OpenRouter model runs the same way: start the run by hand with its
+OpenRouter id as `model`, for example
+
+    gh workflow run swebench-pro.yml --ref benchmark -f model=qwen/qwen3-coder-next
+
+`thinking` (default `high`) is clamped to what the model supports, so a
+model without a thinking mode runs with it off.
+
 ## The harness100 task pool
 
 On a random 100 tasks the model resolved 97: the task statements spell out

@@ -37,10 +37,13 @@ on:
         options: [openrouter, deepseek]
         default: openrouter
       model:
-        description: DeepSeek model
-        type: choice
-        options: [deepseek-v4-flash, deepseek-v4-pro]
+        description: Model id. OpenRouter takes any of its ids (qwen/qwen3-coder-next, openai/gpt-oss-120b, ...); a bare DeepSeek name runs as deepseek/<name>
         default: deepseek-v4-flash
+      thinking:
+        description: Thinking level (clamped to what the model supports; non-reasoning models run with it off)
+        type: choice
+        options: [high, xhigh, medium, low, minimal, "off"]
+        default: high
       seed:
         description: Task selection seed (same seed, same tasks)
         default: "1"
@@ -63,6 +66,7 @@ env:
   SUBSET: ${{ inputs.subset || 'harness100' }}
   PROVIDER: ${{ inputs.provider || 'openrouter' }}
   MODEL: ${{ inputs.model || 'deepseek-v4-flash' }}
+  THINKING: ${{ inputs.thinking || 'high' }}
   SEED: ${{ inputs.seed || '1' }}
 
 jobs:
