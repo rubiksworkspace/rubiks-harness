@@ -1807,3 +1807,131 @@ async fn overflow_error_with_compaction_disabled_ends_without_recovery() {
         .expect("the settled error turn");
     assert_eq!(last.error_message.as_deref(), Some(OVERFLOW_ERROR));
 }
+
+// Provider-failure retry at the settled turn (TS `_handleRetryableError`).
+
+/// A rate-limited provider reply: the `provider_stream_failure` diagnostic
+/// a real failed stream carries.
+fn rate_limited() -> Value {
+    json!({
+        "text": "",
+        "stopReason": "error",
+        "errorMessage": "429 Provider returned error",
+        "providerFailure": { "kind": "rate_limit", "status": 429 },
+    })
+}
+
+/// The settled turn's assistant text, or its error.
+async fn settled_reply(engine: &SessionEngine) -> (pa_types::ai::StopReason, Value) {
+    let last = last_assistant(engine)
+        .await
+        .expect("a settled assistant turn");
+    let wire = serde_json::to_value(&last).unwrap();
+    (last.stop_reason, wire["content"][0]["text"].clone())
+}
+
+fn retry_events(events: &[Value]) -> Vec<Value> {
+    events
+        .iter()
+        .filter(|event| {
+            event["type"]
+                .as_str()
+                .is_some_and(|kind| kind.starts_with("auto_retry"))
+        })
+        .cloned()
+        .collect()
+}
+
+#[tokio::test]
+async fn provider_failure_retries_and_the_turn_recovers() {
+    let _faux = FAUX_TEST_LOCK.lock().await;
+    let (engine, _dir, model) = faux_engine_with_settings(
+        json!({ "responses": [rate_limited(), {"text": "recovered"}] }),
+        json!({ "retry": { "baseDelayMs": 1 } }),
+        None,
+    )
+    .await;
+    let (sink, events) = capture_sink();
+    let mut boundary = TurnBoundary::with_sink(true, sink);
+    admit(&mut boundary, &engine, &model, "flaky turn".to_string())
+        .await
+        .unwrap();
+    assert_eq!(
+        settled_reply(&engine).await,
+        (pa_types::ai::StopReason::Stop, json!("recovered"))
+    );
+    // The retry continues the failed turn: the prompt is never re-sent.
+    assert_eq!(user_texts(&engine).await, vec!["flaky turn".to_string()]);
+    let events = retry_events(&events.lock().unwrap());
+    assert_eq!(events.len(), 2, "events: {events:?}");
+    let delay_ms = events[0]["delayMs"].clone();
+    assert_eq!(
+        events,
+        vec![
+            json!({
+                "type": "auto_retry_start",
+                "attempt": 1,
+                "maxAttempts": 3,
+                "delayMs": delay_ms,
+                "errorMessage": "429 Provider returned error",
+            }),
+            json!({ "type": "auto_retry_end", "success": true, "attempt": 1 }),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn provider_failure_settles_when_retry_is_disabled() {
+    let _faux = FAUX_TEST_LOCK.lock().await;
+    let (engine, _dir, model) = faux_engine_with_settings(
+        json!({ "responses": [rate_limited(), {"text": "never served"}] }),
+        json!({ "retry": { "enabled": false } }),
+        None,
+    )
+    .await;
+    let (sink, events) = capture_sink();
+    let mut boundary = TurnBoundary::with_sink(true, sink);
+    admit(&mut boundary, &engine, &model, "flaky turn".to_string())
+        .await
+        .unwrap();
+    let last = last_assistant(&engine)
+        .await
+        .expect("the settled error turn");
+    assert_eq!(
+        last.error_message.as_deref(),
+        Some("429 Provider returned error")
+    );
+    assert!(retry_events(&events.lock().unwrap()).is_empty());
+}
+
+#[tokio::test]
+async fn permanent_provider_failure_never_retries() {
+    let _faux = FAUX_TEST_LOCK.lock().await;
+    let (engine, _dir, model) = faux_engine_with_settings(
+        json!({ "responses": [
+            {
+                "text": "",
+                "stopReason": "error",
+                "errorMessage": "402 Insufficient credits",
+                "providerFailure": { "kind": "payment_required", "status": 402 },
+            },
+            {"text": "never served"},
+        ] }),
+        json!({ "retry": { "baseDelayMs": 1 } }),
+        None,
+    )
+    .await;
+    let (sink, events) = capture_sink();
+    let mut boundary = TurnBoundary::with_sink(true, sink);
+    admit(&mut boundary, &engine, &model, "paid turn".to_string())
+        .await
+        .unwrap();
+    let last = last_assistant(&engine)
+        .await
+        .expect("the settled error turn");
+    assert_eq!(
+        last.error_message.as_deref(),
+        Some("402 Insufficient credits")
+    );
+    assert!(retry_events(&events.lock().unwrap()).is_empty());
+}

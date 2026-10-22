@@ -86,7 +86,8 @@ pub type ParkFuture =
 
 /// The retry chains consult this at their give-up: `Some(outcome)` parks the session
 /// — the chain surfaces `outcome.status_message` instead of the give-up — and `None` keeps it.
-pub type ParkDecisionCallback<'a> = &'a mut dyn FnMut(AssistantMessage, &str) -> ParkFuture;
+pub type ParkDecisionCallback<'a> =
+    &'a mut (dyn FnMut(AssistantMessage, &str) -> ParkFuture + Send);
 
 /// Park decision after a quota failure whose reported reset exceeds the
 /// bounded wait; pure, the caller owns the clock at the seam.

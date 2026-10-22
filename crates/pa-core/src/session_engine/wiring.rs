@@ -1,6 +1,7 @@
 use super::{
     auxiliary_model, compaction, compaction_exec, image_model_routing, ipython_state,
-    provider_adapter, refine, semantic_edges, telemetry, AgentSession, PromptBatchRow,
+    provider_adapter, provider_retry, refine, semantic_edges, telemetry, AgentSession,
+    PromptBatchRow,
 };
 
 impl AgentSession {
@@ -70,6 +71,24 @@ impl AgentSession {
             .compaction
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = settings;
+    }
+
+    /// Install the provider-failure retry policy resolved from the
+    /// session's settings (`retry.enabled`, `retry.maxRetries`, ...).
+    pub fn set_provider_retry_policy(&self, policy: provider_retry::ProviderRetryPolicy) {
+        *self
+            .provider_retry_policy
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = policy;
+    }
+
+    /// The provider-failure retry policy the settled-turn retry reads.
+    #[must_use]
+    pub fn provider_retry_policy(&self) -> provider_retry::ProviderRetryPolicy {
+        self.provider_retry_policy
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
     }
 
     /// Toggle automatic compaction for this session: the live settings
