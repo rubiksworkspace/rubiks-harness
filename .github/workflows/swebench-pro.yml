@@ -38,7 +38,7 @@ on:
         default: openrouter
       model:
         description: Model id. OpenRouter takes any of its ids (qwen/qwen3-coder-next, openai/gpt-oss-120b, ...); a bare DeepSeek name runs as deepseek/<name>
-        default: qwen/qwen3-coder-next
+        default: openai/gpt-oss-20b
       thinking:
         description: Thinking level (clamped to what the model supports; non-reasoning models run with it off)
         type: choice
@@ -68,7 +68,7 @@ env:
   INSTANCES: ${{ inputs.instances || '' }}
   SUBSET: ${{ inputs.subset || 'harness100' }}
   PROVIDER: ${{ inputs.provider || 'openrouter' }}
-  MODEL: ${{ inputs.model || 'qwen/qwen3-coder-next' }}
+  MODEL: ${{ inputs.model || 'openai/gpt-oss-20b' }}
   THINKING: ${{ inputs.thinking || 'high' }}
   SEED: ${{ inputs.seed || '1' }}
 
