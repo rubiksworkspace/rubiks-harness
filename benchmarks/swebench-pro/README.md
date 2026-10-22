@@ -26,6 +26,14 @@ OpenRouter id as `model`, for example
 `thinking` (default `high`) is clamped to what the model supports, so a
 model without a thinking mode runs with it off.
 
+`parallel` (default 10) is how many tasks run at once. Lower it for a model
+whose host rate-limits (a busy OpenRouter upstream answers 429): fewer tasks
+at once means fewer rejected calls. Whatever still fails is retried by the
+harness itself: `run_task.sh` gives the agent up to 6 retries with backoff
+doubling from 4 s (`RETRY_MAX_RETRIES`, `RETRY_BASE_DELAY_MS`), and honors a
+provider's Retry-After up to 5 minutes. `summary.csv` counts them in
+`retries`.
+
 ## The harness100 task pool
 
 On a random 100 tasks the model resolved 97: the task statements spell out

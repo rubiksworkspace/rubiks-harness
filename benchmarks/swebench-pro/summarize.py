@@ -207,6 +207,7 @@ def main():
         f"official capture {official} of {len(rows)}) · "
         f"model cost ${cost:.2f} · {sum(row['model_calls'] for row in rows)} model calls · "
         f"{sum(1 for row in rows if row['agent_timed_out'])} timed out · "
+        f"{sum(row['retries'] for row in rows)} provider retries · "
         f"{sum(1 for row in rows if row['suspicious_commands'])} tasks with suspicious commands · "
         f"{sum(row['errors_detected'] for row in rows)} errors detected, "
         f"{sum(row['corrections'] for row in rows)} corrections · "

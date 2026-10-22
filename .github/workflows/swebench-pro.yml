@@ -4,7 +4,7 @@
 # your own task count, tasks, task pool or model.
 #
 #   build      the static Linux harness + uv, and the task list
-#   task (×N)  one job per task, 20 at a time: run_task.sh (setup → offline
+#   task (×N)  one job per task, `parallel` at a time (default 10): run_task.sh (setup → offline
 #              agent with only the DeepSeek API reachable → grade on a fresh
 #              container with the task's own tests), then upload everything
 #   summary    one CSV/markdown summary and a single download with all tasks
@@ -44,6 +44,9 @@ on:
         type: choice
         options: [high, xhigh, medium, low, minimal, "off"]
         default: high
+      parallel:
+        description: Tasks running at once (lower it for a rate-limited model; GitHub allows at most 20 concurrent jobs on this plan)
+        default: "10"
       seed:
         description: Task selection seed (same seed, same tasks)
         default: "1"
@@ -140,7 +143,7 @@ jobs:
     timeout-minutes: 150
     strategy:
       fail-fast: false
-      max-parallel: 20
+      max-parallel: ${{ fromJSON(inputs.parallel || '10') }}
       matrix:
         include: ${{ fromJSON(needs.build.outputs.tasks) }}
     steps:

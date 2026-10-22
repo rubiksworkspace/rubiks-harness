@@ -8,7 +8,8 @@
 # (OPENROUTER_API_KEY or DEEPSEEK_API_KEY), MODEL (default deepseek-v4-flash;
 # OpenRouter takes any of its ids, such as qwen/qwen3-coder-next, and runs a
 # bare name as deepseek/<model>), THINKING (default high, clamped to what the
-# model supports), AGENT_TIMEOUT_SEC (default 3000, the protocol's
+# model supports), RETRY_MAX_RETRIES (default 6) and RETRY_BASE_DELAY_MS
+# (default 4000): the harness's provider-retry schedule, AGENT_TIMEOUT_SEC (default 3000, the protocol's
 # 50 minutes), VERIFY_TIMEOUT_SEC (default 3000).
 #
 # Phases (SWE-bench Pro V2 locked protocol, v2/README.md):
@@ -51,6 +52,8 @@ if [ -z "${!key_var:-}" ]; then
   exit 2
 fi
 thinking="${THINKING:-high}"
+retry_max_retries="${RETRY_MAX_RETRIES:-6}"
+retry_base_delay_ms="${RETRY_BASE_DELAY_MS:-4000}"
 agent_timeout="${AGENT_TIMEOUT_SEC:-3000}"
 verify_timeout="${VERIFY_TIMEOUT_SEC:-3000}"
 instance_id="$(basename "$task_dir")"
@@ -100,6 +103,14 @@ bootstrap_ok=true
 docker exec -w "$repo_dir" "$agent" /opt/prime-agent/prime-agent --prime-agent-bootstrap \
   > "$out/agent/kernel-bootstrap.log" 2>&1 || bootstrap_ok=false
 setup_seconds=$(( $(now) - setup_start ))
+
+# Provider retries: nobody is there to press retry, and a rate-limited
+# model (a shared OpenRouter upstream) needs minutes, not the default
+# seconds, to come back. Backoff doubles from the base delay (4, 8, 16 ...
+# 128 s by default); a provider's Retry-After is honored up to 5 minutes.
+printf '{"retry": {"enabled": true, "maxRetries": %s, "baseDelayMs": %s, "provider": {"maxRetryDelayMs": 300000}}}\n' \
+  "$retry_max_retries" "$retry_base_delay_ms" |
+  docker exec -i "$agent" sh -c 'mkdir -p /root/.prime/agent && cat > /root/.prime/agent/settings.json'
 
 # --- agent ------------------------------------------------------------------
 docker network disconnect bridge "$agent"
