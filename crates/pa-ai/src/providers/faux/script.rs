@@ -29,7 +29,8 @@ pub struct FauxScript {
 ///
 /// Entry forms: a plain string, `{"text": "..."}`, or `{"content": [{"type":
 /// "thinking"|"text"|"toolCall", ...}], "stopReason"?}`. The stop reason defaults to `toolUse` when
-/// the entry carries a tool call.
+/// the entry carries a tool call. An error entry may carry `"providerFailure": {"kind", "status",
+/// "retryAfterMs"?}`, the provider-failure diagnostic a real failed stream carries.
 ///
 /// # Errors
 ///
@@ -152,7 +153,7 @@ fn parse_script_step(entry: &Value) -> Result<FauxResponseStep, String> {
         .get("delayMs")
         .and_then(Value::as_u64)
         .unwrap_or_default();
-    let message = faux_assistant_message(
+    let mut message = faux_assistant_message(
         content,
         FauxAssistantMessageOptions {
             stop_reason: Some(stop_reason),
@@ -160,6 +161,20 @@ fn parse_script_step(entry: &Value) -> Result<FauxResponseStep, String> {
             ..Default::default()
         },
     );
+    // Optional provider-failure details (verification harness only): the
+    // `provider_stream_failure` diagnostic a real provider attaches to a
+    // failed stream (`{"kind": "rate_limit", "status": 429}`), so retry
+    // harnesses can script real provider failures.
+    if let Some(details) = entry.get("providerFailure") {
+        crate::utils_inner::diagnostics::append_assistant_message_diagnostic(
+            &mut message,
+            crate::utils_inner::diagnostics::create_assistant_message_diagnostic(
+                "provider_stream_failure",
+                None,
+                Some(details.clone()),
+            ),
+        );
+    }
     Ok(if delay_ms > 0 {
         FauxResponseStep::Delayed { message, delay_ms }
     } else {

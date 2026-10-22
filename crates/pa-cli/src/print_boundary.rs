@@ -6,6 +6,7 @@
 
 use std::path::PathBuf;
 
+use pa_core::session_engine::auto_retry::AutoRetryEvent;
 use pa_core::session_engine::compact_session::{CompactOutcome, CompactRun};
 use pa_core::session_engine::engine::SessionEngine;
 use pa_core::session_engine::messages::{CompactionOutcomeKind, CompactionOutcomeReason};
@@ -18,7 +19,7 @@ use serde_json::{json, Value};
 
 mod events;
 
-use events::{compaction_end_success_event, compaction_start_event};
+use events::{auto_retry_event, compaction_end_success_event, compaction_start_event};
 
 mod compaction_arms;
 
@@ -121,8 +122,10 @@ impl TurnBoundary {
         Ok(())
     }
 
-    /// The settled-turn boundary: the checkpoint's auto-refine consumption, then the
-    /// overflow arm with its retry loop, then the requested and threshold arms.
+    /// The settled-turn boundary: the provider-failure retry (TS
+    /// `_handleRetryableError` at `agent_end`), the checkpoint's auto-refine
+    /// consumption, then the overflow arm with its retry loop, then the
+    /// requested and threshold arms.
     pub(crate) async fn run_at_settled_turn(
         &mut self,
         engine: &SessionEngine,
@@ -130,6 +133,19 @@ impl TurnBoundary {
         api_key: Option<String>,
         global_harness_dir: PathBuf,
     ) -> Result<(), String> {
+        // json mode streams the retry pair the way TS print mode streams
+        // session events: only once a retry starts (a failure that settles
+        // at once stays the turn's own error).
+        let mut retrying = false;
+        engine
+            .retry_settled_provider_failure(model.context_window, |event| {
+                retrying |= matches!(event, AutoRetryEvent::Start { .. });
+                if self.json_mode && retrying {
+                    (self.sink)(&auto_retry_event(event));
+                }
+            })
+            .await
+            .map_err(|error| format!("{error:#}"))?;
         self.count_settled_turns(engine).await;
         self.consume_compact_auto_refine(
             engine,

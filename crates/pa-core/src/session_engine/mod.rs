@@ -47,6 +47,7 @@ pub mod turn_boundary;
 
 mod admission;
 mod compaction_arms;
+mod settled_retry;
 mod wiring;
 
 use std::sync::Arc;
@@ -129,6 +130,9 @@ pub struct AgentSession {
     /// Compaction settings; defaults until the engine wiring resolves
     /// them.
     compaction: std::sync::RwLock<compaction::CompactionSettings>,
+    /// The provider-failure retry policy (`retry.*` settings); defaults
+    /// until the engine wiring resolves it.
+    provider_retry_policy: std::sync::RwLock<provider_retry::ProviderRetryPolicy>,
     /// Auxiliary-model routing for compaction summaries; `None` keeps
     /// every summarizer on the session model.
     auxiliary_model: Option<auxiliary_model::AuxiliaryModelContext>,
@@ -235,6 +239,9 @@ impl AgentSession {
             harness_digest,
             digest_pending: std::sync::atomic::AtomicBool::new(false),
             compaction: std::sync::RwLock::new(compaction::CompactionSettings::default()),
+            provider_retry_policy: std::sync::RwLock::new(
+                provider_retry::DEFAULT_PROVIDER_RETRY_POLICY,
+            ),
             auxiliary_model: None,
             auto_refine_allowed: false,
             auto_refine: refine::AutoRefineGates::default(),

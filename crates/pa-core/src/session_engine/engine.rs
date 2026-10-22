@@ -240,6 +240,7 @@ pub async fn create_session(mut config: SessionEngineConfig) -> anyhow::Result<S
     // Captured before `settings` moves into the resource loader: the
     // compaction budget and the auto-refine gates.
     let compaction_settings = settings.settings().compaction.clone().unwrap_or_default();
+    let provider_retry_policy = settings.get_provider_retry_policy();
     let auto_refine_gates =
         super::refine::AutoRefineGates::from_settings(settings.settings().auto_refine.as_ref());
     // Request timing: the settings half of the flag is read once here
@@ -697,6 +698,7 @@ pub async fn create_session(mut config: SessionEngineConfig) -> anyhow::Result<S
             .keep_recent_tokens
             .unwrap_or(crate::session_engine::compaction::DEFAULT_KEEP_RECENT_TOKENS),
     });
+    session.set_provider_retry_policy(provider_retry_policy);
     // Summarizer passes resolve their model through the `auxiliaryModel` setting
     // with the session model as fallback, so one-off prompts stay off the prompt-cache prefix.
     session.set_auxiliary_model_context(

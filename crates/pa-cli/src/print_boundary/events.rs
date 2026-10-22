@@ -1,6 +1,8 @@
 //! The boundary renderers: the `compaction_start`/`compaction_end` event builders
 //! and the json-mode emission methods.
 
+use pa_core::session_engine::auto_retry::{AutoRetryEvent, RetryStartReason};
+
 use super::{
     json, CompactRun, CompactionOutcomeKind, CompactionOutcomeReason, SessionEngine, TurnBoundary,
     Value,
@@ -14,6 +16,55 @@ pub(super) fn compaction_start_event(reason: &str, custom_instructions: Option<&
         event["customInstructions"] = json!(instructions);
     }
     event
+}
+
+/// The `auto_retry_start` / `auto_retry_end` wire events (the daemon
+/// worker's shape: TS session events, camelCase fields).
+pub(super) fn auto_retry_event(event: &AutoRetryEvent) -> Value {
+    match event {
+        AutoRetryEvent::Start {
+            attempt,
+            max_attempts,
+            delay_ms,
+            error_message,
+            reason,
+        } => {
+            let mut wire = json!({
+                "type": "auto_retry_start",
+                "attempt": attempt,
+                "maxAttempts": max_attempts,
+                "delayMs": delay_ms,
+                "errorMessage": error_message,
+            });
+            match reason {
+                RetryStartReason::Quick => {}
+                RetryStartReason::Backup { backup_model } => {
+                    wire["reason"] = json!("backup");
+                    wire["backupModel"] = json!(backup_model);
+                }
+            }
+            wire
+        }
+        AutoRetryEvent::End {
+            success,
+            attempt,
+            final_error,
+            restored_model,
+        } => {
+            let mut wire = json!({
+                "type": "auto_retry_end",
+                "success": success,
+                "attempt": attempt,
+            });
+            if let Some(final_error) = final_error {
+                wire["finalError"] = json!(final_error);
+            }
+            if let Some(restored_model) = restored_model {
+                wire["restoredModel"] = json!(restored_model);
+            }
+            wire
+        }
+    }
 }
 
 /// The successful `compaction_end` event: the `CompactionResult` wire shape plus
