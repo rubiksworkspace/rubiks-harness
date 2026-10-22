@@ -19,7 +19,7 @@ impl SessionEngine {
     /// carrying the `provider_stream_failure` diagnostic enters the loop;
     /// permanent kinds (payment, auth, invalid request) and a context
     /// overflow settle at once. `observe` sees every retry event; the
-    /// semantic-edge recorder and telemetry see them too.
+    /// research log, semantic-edge recorder and telemetry see them too.
     ///
     /// # Errors
     ///
@@ -37,6 +37,7 @@ impl SessionEngine {
             return Ok(());
         }
         let policy = self.session.provider_retry_policy();
+        let research = self.session.research_log();
         let semantic_edges = self.session.semantic_edges();
         // The first attempt is the turn that already settled.
         let mut settled = Some(failed);
@@ -71,6 +72,9 @@ impl SessionEngine {
                 }
                 if let Some(telemetry) = &self.telemetry {
                     telemetry.note_auto_retry_event(&event);
+                }
+                if let Some(recorder) = &research {
+                    recorder.note_auto_retry(&event);
                 }
                 observe(&event);
                 std::future::ready(Ok(()))
