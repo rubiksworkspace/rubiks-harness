@@ -1074,3 +1074,53 @@ fn print_mode_fork_rejects_empty_sources_and_conflicting_flags() {
         }
     );
 }
+
+// Empty-reply nudge: an unattended run whose reply stopped with only thinking.
+
+/// A reply that stops with nothing but thinking (no text, no tool call).
+fn thinking_only() -> serde_json::Value {
+    serde_json::json!({ "content": [{ "type": "thinking", "thinking": "Let's inspect /app." }] })
+}
+
+/// The text of every persisted user message, in order.
+fn user_texts(home: &std::path::Path) -> Vec<String> {
+    read_entries(&session_files(home)[0])
+        .iter()
+        .filter(|entry| entry["type"] == "message" && entry["message"]["role"] == "user")
+        .map(|entry| {
+            let content = &entry["message"]["content"];
+            content.as_str().map_or_else(
+                || content[0]["text"].as_str().unwrap_or_default().to_string(),
+                str::to_string,
+            )
+        })
+        .collect()
+}
+
+const EMPTY_REPLY_NUDGE: &str = "Your last reply had no message and no tool call. Continue the task: call a tool, or give your final answer.";
+
+#[test]
+fn print_mode_nudges_an_empty_reply_and_the_run_finishes() {
+    let home = isolated_home();
+    let script = serde_json::json!({ "responses": [thinking_only(), "done"] });
+    let (stdout, stderr, code) = run_in_home(home.path(), &["-p", "the task"], &script);
+    assert_eq!(code, 0, "stderr: {stderr}");
+    assert_eq!(stdout, "done\n");
+    assert_eq!(
+        user_texts(home.path()),
+        vec!["the task".to_string(), EMPTY_REPLY_NUDGE.to_string()]
+    );
+}
+
+#[test]
+fn print_mode_stops_nudging_a_model_that_only_thinks() {
+    let home = isolated_home();
+    let script = serde_json::json!({ "responses": [thinking_only()], "repeatLastResponse": true });
+    let (_stdout, stderr, _code) = run_in_home(home.path(), &["-p", "the task"], &script);
+    let nudge = EMPTY_REPLY_NUDGE.to_string();
+    assert_eq!(
+        user_texts(home.path()),
+        vec!["the task".to_string(), nudge.clone(), nudge.clone(), nudge],
+        "stderr: {stderr}"
+    );
+}

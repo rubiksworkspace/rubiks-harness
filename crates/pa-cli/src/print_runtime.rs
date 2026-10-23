@@ -1403,6 +1403,10 @@ fn builtin_tools(_cwd: &std::path::Path) -> Vec<Arc<dyn pa_agent::types::AgentTo
     Vec::new()
 }
 
+/// How many times one prompt's empty reply (only thinking) is nudged before
+/// the run is left to end: a model that only ever thinks must not loop.
+const MAX_EMPTY_REPLY_NUDGES: u32 = 3;
+
 /// Admit prompts, stream json events when requested, and decide the exit code
 /// from the headless terminal result plus the autonomous gate contract.
 async fn run_prompts_and_emit(
@@ -1531,6 +1535,23 @@ async fn run_prompts_and_emit(
         boundary
             .run_at_settled_turn(engine, model, api_key.clone(), global_harness_dir.clone())
             .await?;
+        // Nobody is there to answer a reply that stopped with only thinking:
+        // nudge it to continue, a bounded number of times. Goal and
+        // autonomous runs read an empty turn as no progress and stay theirs.
+        if options.config.autonomous.is_none() {
+            let mut nudges = 0;
+            while nudges < MAX_EMPTY_REPLY_NUDGES
+                && engine
+                    .nudge_empty_reply()
+                    .await
+                    .map_err(|error| format!("{error:#}"))?
+            {
+                nudges += 1;
+                boundary
+                    .run_at_settled_turn(engine, model, api_key.clone(), global_harness_dir.clone())
+                    .await?;
+            }
+        }
         goal.drive_boundary(
             engine,
             &mut boundary,
