@@ -42,8 +42,8 @@ on:
       thinking:
         description: Thinking level (clamped to what the model supports; non-reasoning models run with it off)
         type: choice
-        options: [high, xhigh, medium, low, minimal, "off"]
-        default: high
+        options: [medium, high, xhigh, low, minimal, "off"]
+        default: medium
       parallel:
         description: Tasks running at once (lower it for a rate-limited model; GitHub allows at most 20 concurrent jobs on this plan)
         default: "10"
@@ -69,7 +69,7 @@ env:
   SUBSET: ${{ inputs.subset || 'harness100' }}
   PROVIDER: ${{ inputs.provider || 'openrouter' }}
   MODEL: ${{ inputs.model || 'openai/gpt-oss-20b' }}
-  THINKING: ${{ inputs.thinking || 'high' }}
+  THINKING: ${{ inputs.thinking || 'medium' }}
   SEED: ${{ inputs.seed || '1' }}
 
 jobs:
