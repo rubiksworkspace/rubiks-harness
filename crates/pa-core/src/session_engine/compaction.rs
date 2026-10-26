@@ -24,6 +24,9 @@ pub struct CompactionSettings {
     /// `input + requested output > contextWindow`.
     pub reserve_tokens: u64,
     pub keep_recent_tokens: u64,
+    /// A context-size ceiling below the window (`compaction.maxContextTokens`):
+    /// the threshold never passes it.
+    pub max_context_tokens: Option<u64>,
 }
 
 impl Default for CompactionSettings {
@@ -32,6 +35,7 @@ impl Default for CompactionSettings {
             enabled: true,
             reserve_tokens: DEFAULT_RESERVE_TOKENS,
             keep_recent_tokens: DEFAULT_KEEP_RECENT_TOKENS,
+            max_context_tokens: None,
         }
     }
 }
@@ -146,8 +150,9 @@ fn div4(chars: u64) -> u64 {
 /// large windows). COMBINED-LIMIT: `context_window - max_output_tokens -
 /// max(reserve_tokens, COMBINED_LIMIT_HEADROOM_FLOOR)`: the output budget
 /// must still fit. TS checks only `contextWindow - reserveTokens`; reserving
-/// the output budget is a deliberate Rust-side fix. A non-positive threshold
-/// disables the trigger.
+/// the output budget is a deliberate Rust-side fix. A configured
+/// `max_context_tokens` caps both. A non-positive threshold disables the
+/// trigger.
 #[must_use]
 pub fn compaction_threshold(
     context_window: u64,
@@ -159,7 +164,10 @@ pub fn compaction_threshold(
     let combined = context_window
         .saturating_sub(max_output_tokens)
         .saturating_sub(headroom);
-    percentage.min(combined)
+    let threshold = percentage.min(combined);
+    settings
+        .max_context_tokens
+        .map_or(threshold, |ceiling| threshold.min(ceiling))
 }
 
 #[must_use]
@@ -601,6 +609,7 @@ mod tests {
             enabled: true,
             reserve_tokens: 127_500,
             keep_recent_tokens: 10,
+            max_context_tokens: None,
         };
         let messages = vec![
             user_message("f14 auto seed turn", 1),
@@ -618,6 +627,7 @@ mod tests {
             enabled: false,
             reserve_tokens: 127_500,
             keep_recent_tokens: 10,
+            max_context_tokens: None,
         };
         assert!(!threshold_compaction_due(&messages, 128_000, 0, &disabled));
         assert!(!threshold_compaction_due(&messages, 0, 0, &settings));
@@ -685,8 +695,25 @@ mod tests {
             enabled: true,
             reserve_tokens: 1,
             keep_recent_tokens: 10,
+            max_context_tokens: None,
         };
         assert_eq!(compaction_threshold(131_072, 32_768, &settings), 94_208);
+        // A context ceiling below the window wins; one above it changes nothing.
+        let capped = CompactionSettings {
+            max_context_tokens: Some(150_000),
+            ..CompactionSettings::default()
+        };
+        assert_eq!(compaction_threshold(1_048_576, 32_000, &capped), 150_000);
+        assert!(should_compact(150_001, 1_048_576, 32_000, &capped));
+        assert!(!should_compact(149_999, 1_048_576, 32_000, &capped));
+        let roomy = CompactionSettings {
+            max_context_tokens: Some(10_000_000),
+            ..CompactionSettings::default()
+        };
+        assert_eq!(
+            compaction_threshold(131_072, 32_768, &roomy),
+            compaction_threshold(131_072, 32_768, &CompactionSettings::default())
+        );
         // An output budget that cannot fit any context disables the
         // trigger.
         assert_eq!(
@@ -707,6 +734,7 @@ mod tests {
             enabled: true,
             reserve_tokens: 127_500,
             keep_recent_tokens: 10,
+            max_context_tokens: None,
         };
         let messages = vec![
             compaction_summary(10),

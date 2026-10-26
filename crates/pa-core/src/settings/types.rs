@@ -96,6 +96,31 @@ pub struct CompactionSettings {
     pub reserve_tokens: Option<u64>,
     pub keep_recent_tokens: Option<u64>,
     pub agent_callable: Option<bool>,
+    /// Compact once the context passes this many tokens, even when the
+    /// model's window is far larger (a model can lose track of a long
+    /// context well before its window fills). Unset: the window decides.
+    pub max_context_tokens: Option<u64>,
+}
+
+/// Unattended (print mode) runs: nobody reads the reply before the run ends.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HeadlessSettings {
+    /// After the task's turn settles, ask the model once to check its work
+    /// against the task's requirements and the final diff before it answers.
+    pub final_review: Option<bool>,
+    /// The thinking level the final review runs at (default: the session's).
+    pub final_review_thinking_level: Option<ThinkingLevelSetting>,
+}
+
+/// Tool output size.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolOutputSettings {
+    /// Cap one `python_repl` output at this many characters, keeping its
+    /// start and its end (where test summaries and errors are). Unset: the
+    /// kernel's own limit only.
+    pub max_chars: Option<u64>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -321,6 +346,8 @@ pub struct Settings {
     pub telemetry: Option<TelemetrySettings>,
     pub branch_summary: Option<BranchSummarySettings>,
     pub retry: Option<RetrySettings>,
+    pub headless: Option<HeadlessSettings>,
+    pub tool_output: Option<ToolOutputSettings>,
     pub provider_backup_model: Option<String>,
     /// Model ("provider/model-id" or a bare model id) that serves turns attaching images when the
     /// session model does not accept image input. Default: none - image turns on a text-only model

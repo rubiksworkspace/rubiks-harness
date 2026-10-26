@@ -31,6 +31,8 @@ const KNOWN_FIELDS: &[&str] = &[
     "telemetry",
     "branchSummary",
     "retry",
+    "headless",
+    "toolOutput",
     "providerBackupModel",
     "imageModel",
     "autonomous",

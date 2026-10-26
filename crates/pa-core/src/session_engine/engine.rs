@@ -697,6 +697,7 @@ pub async fn create_session(mut config: SessionEngineConfig) -> anyhow::Result<S
         keep_recent_tokens: compaction_settings
             .keep_recent_tokens
             .unwrap_or(crate::session_engine::compaction::DEFAULT_KEEP_RECENT_TOKENS),
+        max_context_tokens: compaction_settings.max_context_tokens,
     });
     session.set_provider_retry_policy(provider_retry_policy);
     // Summarizer passes resolve their model through the `auxiliaryModel` setting
