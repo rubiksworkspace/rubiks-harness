@@ -6,12 +6,15 @@ in GitHub Actions and keeps everything the harness produces.
 
 ## Running it
 
-- Push to the `benchmark` branch: the 100 tasks of `harness100.csv` on
-  DeepSeek V4 Flash.
-- Or start it by hand (once the workflow is on the default branch, or with
-  `gh workflow run swebench-pro.yml --ref benchmark -f count=50`) to choose
-  the task count, exact instance ids, the task pool (`harness100`, `all`,
-  `hard51`), the model, or the selection seed.
+The workflow runs only when started by hand; a push never starts it.
+
+- On GitHub: Actions tab → **SWE-bench Pro** → **Run workflow**. With the
+  defaults it runs the 100 tasks of `harness100.csv` on DeepSeek V4 Flash
+  (thinking high) through OpenRouter.
+- Or from a terminal: `gh workflow run swebench-pro.yml -f count=50`, with any
+  of the inputs: the task count, exact instance ids, the task pool
+  (`harness100`, `all`, `hard51`), the provider, the model, the thinking
+  level, how many tasks run at once (`parallel`), or the selection seed.
 
 The repository secret `OPENROUTER_API_KEY` must be set (the model runs as
 `deepseek/deepseek-v4-flash` on OpenRouter). To call DeepSeek directly

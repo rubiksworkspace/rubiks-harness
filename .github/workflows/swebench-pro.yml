@@ -1,7 +1,8 @@
 # Runs the Rubiks harness (Prime Agent) on SWE-bench Pro V2 and keeps every
-# piece of data the harness produces. Runs on every push to the `benchmark`
-# branch (the 100 harness-stressing tasks of harness100.csv), or by hand with
-# your own task count, tasks, task pool or model.
+# piece of data the harness produces. Runs only when started by hand (Actions
+# tab → SWE-bench Pro → Run workflow, or `gh workflow run swebench-pro.yml`):
+# a push never starts it. By default: the 100 harness-stressing tasks of
+# harness100.csv on DeepSeek V4 Flash.
 #
 #   build      the static Linux harness + uv, and the task list
 #   task (×N)  one job per task, `parallel` at a time (default 10): run_task.sh (setup → offline
@@ -16,8 +17,6 @@
 name: SWE-bench Pro
 
 on:
-  push:
-    branches: [benchmark]
   workflow_dispatch:
     inputs:
       count:
@@ -38,12 +37,12 @@ on:
         default: openrouter
       model:
         description: Model id. OpenRouter takes any of its ids (qwen/qwen3-coder-next, openai/gpt-oss-120b, ...); a bare DeepSeek name runs as deepseek/<name>
-        default: openai/gpt-oss-20b
+        default: deepseek-v4-flash
       thinking:
         description: Thinking level (clamped to what the model supports; non-reasoning models run with it off)
         type: choice
-        options: [medium, high, xhigh, low, minimal, "off"]
-        default: medium
+        options: [high, xhigh, medium, low, minimal, "off"]
+        default: high
       parallel:
         description: Tasks running at once (lower it for a rate-limited model; GitHub allows at most 20 concurrent jobs on this plan)
         default: "10"
@@ -68,8 +67,8 @@ env:
   INSTANCES: ${{ inputs.instances || '' }}
   SUBSET: ${{ inputs.subset || 'harness100' }}
   PROVIDER: ${{ inputs.provider || 'openrouter' }}
-  MODEL: ${{ inputs.model || 'openai/gpt-oss-20b' }}
-  THINKING: ${{ inputs.thinking || 'medium' }}
+  MODEL: ${{ inputs.model || 'deepseek-v4-flash' }}
+  THINKING: ${{ inputs.thinking || 'high' }}
   SEED: ${{ inputs.seed || '1' }}
 
 jobs:
