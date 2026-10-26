@@ -1,10 +1,16 @@
-# Builds the "Prime Agent (Rubiks)" DMG for Apple silicon on every push to the
-# gpl-3.0 branch (or by hand from the Actions tab). The DMG holds the release
-# archive `make package` builds, the release installer, and a double-click
-# "Install Prime Agent" script (scripts/release/macos-dmg/). Each run keeps
-# the DMG as a workflow artifact for 30 days, and pushes to gpl-3.0 also
-# replace the "harness-latest" release, so the newest build is always at:
-#   https://github.com/<owner>/<repo>/releases/download/harness-latest/Prime-Agent-Rubiks-arm64.dmg
+# Builds Prime Agent (Rubiks) for Apple silicon when started by hand (Actions
+# tab → Run workflow). Each run keeps the DMG as a workflow artifact for 30
+# days. A run from main also replaces the "harness-latest" release, which
+# holds:
+#   Prime-Agent-Rubiks-arm64.dmg              the DMG: the release archive
+#                                             `make package` builds, the release
+#                                             installer and a double-click
+#                                             "Install Prime Agent" script
+#   prime-agent-<version>-darwin-arm64.tar.gz the release archive
+#   install-rust.sh                           the release installer
+#   install.sh                                the one-line installer the Rubiks
+#                                             IDE runs (scripts/release/rubiks-install.sh):
+#     curl -fsSL https://github.com/<owner>/<repo>/releases/download/harness-latest/install.sh | sh
 name: Prime Agent (Rubiks) DMG
 
 # Started by hand only (Actions tab → Run workflow): no push, tag, pull
@@ -70,15 +76,19 @@ jobs:
           if-no-files-found: error
 
       - name: Publish the harness-latest release
-        if: github.ref == 'refs/heads/gpl-3.0'
+        if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
           DMG: ${{ steps.dmg.outputs.path }}
           ARCHIVE: ${{ steps.dmg.outputs.archive }}
         run: |
+          # The one-line installer, with this build's archive name filled in.
+          sed "s/__RUBIKS_ARCHIVE__/${ARCHIVE}/" scripts/release/rubiks-install.sh > target/dmg/install.sh
+          sh -n target/dmg/install.sh
           gh release delete harness-latest --yes --cleanup-tag || true
           gh release create harness-latest "$DMG" \
+            "target/release-package/${ARCHIVE}" install-rust.sh target/dmg/install.sh \
             --target "$GITHUB_SHA" \
             --prerelease \
-            --title "Prime Agent (Rubiks) — latest gpl-3.0 build" \
-            --notes "Built from ${GITHUB_SHA} (${ARCHIVE}) by run ${GITHUB_RUN_NUMBER}. Apple silicon only. Open the DMG and double-click Install Prime Agent (first time: right-click → Open)."
+            --title "Prime Agent (Rubiks) — latest main build" \
+            --notes "Built from ${GITHUB_SHA} (${ARCHIVE}) by run ${GITHUB_RUN_NUMBER}. Apple silicon only. Install from a terminal: curl -fsSL https://github.com/${GITHUB_REPOSITORY}/releases/download/harness-latest/install.sh | sh — or open the DMG and double-click Install Prime Agent (first time: right-click → Open)."
