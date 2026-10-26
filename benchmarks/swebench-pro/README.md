@@ -34,6 +34,26 @@ doubling from 4 s (`RETRY_MAX_RETRIES`, `RETRY_BASE_DELAY_MS`), and honors a
 provider's Retry-After up to 5 minutes. `summary.csv` counts them in
 `retries`.
 
+## Harness settings for the run
+
+`run_task.sh` gives the agent the settings an unattended run needs (each
+can be changed through its environment variable):
+
+| Setting | Default | What it does |
+|---|---|---|
+| `retry` (`RETRY_MAX_RETRIES`, `RETRY_BASE_DELAY_MS`) | 6 retries from 4 s | provider failures retry instead of ending the run |
+| `headless.finalReview` (`FINAL_REVIEW`, `FINAL_REVIEW_THINKING`) | on, at high thinking | one more turn checking the work against the task before the answer |
+| `toolOutput.maxChars` (`TOOL_OUTPUT_MAX_CHARS`) | 12000 | caps one `python_repl` output, keeping its start and its end |
+| `compaction.maxContextTokens` (`MAX_CONTEXT_TOKENS`) | 150000 | compacts long before a 1M window fills |
+
+DeepSeek through OpenRouter prefers DeepSeek's own servers (`models.json`
+routing), so a session keeps its prompt cache. The system prompt also tells
+the model the sandbox is offline, so it does not try to install packages.
+
+`summary.csv` reports how the agent worked: `file_rereads`,
+`empty_code_calls`, `max_tool_output_chars`, `test_runs`, `retries`,
+`empty_reply_nudges` and `final_review`.
+
 ## The harness100 task pool
 
 On a random 100 tasks the model resolved 97: the task statements spell out

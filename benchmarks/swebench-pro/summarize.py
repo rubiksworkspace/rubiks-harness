@@ -44,7 +44,16 @@ COLUMNS = [
     "loops_detected", "corrections", "uncorrected_errors",
     "verifications", "verifications_passed", "compactions", "context_tokens_peak",
     "egress_allowed", "egress_refused", "suspicious_commands",
+    "file_rereads", "empty_code_calls", "max_tool_output_chars", "test_runs",
+    "empty_reply_nudges", "final_review",
 ]
+
+# The harness's own turns in an unattended run (crates/pa-core/src/session_engine:
+# empty_reply.rs and final_review.rs).
+EMPTY_REPLY_NUDGE = "Your last reply had no message and no tool call."
+FINAL_REVIEW_PROMPT = "Before you finish, review your work against the task:"
+TEST_RUN = re.compile(r"run_tests\(|pytest|\bgo test|'go', 'test'|\bjest\b|vitest|\bmocha\b|npm (run )?test")
+FILE_READ = re.compile(r"open\(\s*['\"]([^'\"]+)['\"]|read_text\(|\bcat\s+([\w./-]+)")
 
 
 def read_jsonl(path):
@@ -82,6 +91,49 @@ def tool_commands(data_dir):
                     if isinstance(text, str):
                         commands.append(text)
     return commands
+
+
+def session_metrics(data_dir):
+    """How the agent worked, from the session files: re-reads of the same file,
+    empty python_repl calls, the largest tool output, test runs, and the
+    harness's own nudge and review turns."""
+    reads, empty, largest, tests, nudges, review = {}, 0, 0, 0, 0, False
+    sessions = data_dir / "sessions"
+    for path in sessions.rglob("*.jsonl") if sessions.is_dir() else []:
+        for record in read_jsonl(path):
+            message = record.get("message") or {}
+            role = message.get("role")
+            if role == "assistant":
+                for block in message.get("content") or []:
+                    if block.get("type") != "toolCall":
+                        continue
+                    code = (block.get("arguments") or {}).get("code")
+                    if isinstance(code, str):
+                        if not code.strip():
+                            empty += 1
+                        if TEST_RUN.search(code):
+                            tests += 1
+                        for match in FILE_READ.finditer(code):
+                            name = next((group for group in match.groups() if group), None)
+                            if name:
+                                reads[name] = reads.get(name, 0) + 1
+            elif role == "toolResult":
+                largest = max(largest, len(json.dumps(message.get("content"))))
+            elif role == "user":
+                content = message.get("content")
+                text = content if isinstance(content, str) else " ".join(
+                    block.get("text", "") for block in content or [] if isinstance(block, dict)
+                )
+                nudges += text.startswith(EMPTY_REPLY_NUDGE)
+                review = review or text.startswith(FINAL_REVIEW_PROMPT)
+    return {
+        "file_rereads": sum(count - 1 for count in reads.values() if count > 1),
+        "empty_code_calls": empty,
+        "max_tool_output_chars": largest,
+        "test_runs": tests,
+        "empty_reply_nudges": nudges,
+        "final_review": review,
+    }
 
 
 def verifier_counts(task_dir):
@@ -178,6 +230,7 @@ def summarize_task(task_dir):
         "egress_allowed": sum(1 for entry in egress if entry.get("event") == "allowed"),
         "egress_refused": sum(1 for entry in egress if entry.get("event") == "refused"),
         "suspicious_commands": len(suspicious),
+        **session_metrics(data_dir),
     }
     return row, suspicious
 
@@ -208,6 +261,8 @@ def main():
         f"model cost ${cost:.2f} · {sum(row['model_calls'] for row in rows)} model calls · "
         f"{sum(1 for row in rows if row['agent_timed_out'])} timed out · "
         f"{sum(row['retries'] for row in rows)} provider retries · "
+        f"{sum(1 for row in rows if row['final_review'])} final reviews · "
+        f"{sum(row['empty_reply_nudges'] for row in rows)} empty-reply nudges · "
         f"{sum(1 for row in rows if row['suspicious_commands'])} tasks with suspicious commands · "
         f"{sum(row['errors_detected'] for row in rows)} errors detected, "
         f"{sum(row['corrections'] for row in rows)} corrections · "

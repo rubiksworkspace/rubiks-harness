@@ -9,7 +9,11 @@
 # OpenRouter takes any of its ids, such as qwen/qwen3-coder-next, and runs a
 # bare name as deepseek/<model>), THINKING (default high, clamped to what the
 # model supports), RETRY_MAX_RETRIES (default 6) and RETRY_BASE_DELAY_MS
-# (default 4000): the harness's provider-retry schedule, AGENT_TIMEOUT_SEC (default 3000, the protocol's
+# (default 4000): the harness's provider-retry schedule, FINAL_REVIEW
+# (default 1) and FINAL_REVIEW_THINKING (default high): the review turn before
+# the agent answers, TOOL_OUTPUT_MAX_CHARS (default 12000): the cap on one
+# python_repl output, MAX_CONTEXT_TOKENS (default 150000): the context size
+# that triggers compaction, AGENT_TIMEOUT_SEC (default 3000, the protocol's
 # 50 minutes), VERIFY_TIMEOUT_SEC (default 3000).
 #
 # Phases (SWE-bench Pro V2 locked protocol, v2/README.md):
@@ -54,6 +58,10 @@ fi
 thinking="${THINKING:-high}"
 retry_max_retries="${RETRY_MAX_RETRIES:-6}"
 retry_base_delay_ms="${RETRY_BASE_DELAY_MS:-4000}"
+final_review="${FINAL_REVIEW:-1}"
+final_review_thinking="${FINAL_REVIEW_THINKING:-high}"
+tool_output_max_chars="${TOOL_OUTPUT_MAX_CHARS:-12000}"
+max_context_tokens="${MAX_CONTEXT_TOKENS:-150000}"
 agent_timeout="${AGENT_TIMEOUT_SEC:-3000}"
 verify_timeout="${VERIFY_TIMEOUT_SEC:-3000}"
 instance_id="$(basename "$task_dir")"
@@ -104,15 +112,41 @@ docker exec -w "$repo_dir" "$agent" /opt/prime-agent/prime-agent --prime-agent-b
   > "$out/agent/kernel-bootstrap.log" 2>&1 || bootstrap_ok=false
 setup_seconds=$(( $(now) - setup_start ))
 
-# Provider retries: nobody is there to press retry, and a rate-limited
-# model (a shared OpenRouter upstream) needs minutes, not the default
-# seconds, to come back. Backoff doubles from the base delay (4, 8, 16 ...
-# 128 s by default); a provider's Retry-After is honored up to 5 minutes.
-printf '{"retry": {"enabled": true, "maxRetries": %s, "baseDelayMs": %s, "provider": {"maxRetryDelayMs": 300000}}}\n' \
-  "$retry_max_retries" "$retry_base_delay_ms" |
+# The harness settings for an unattended run:
+# - provider retries: nobody is there to press retry, and a rate-limited model
+#   (a shared OpenRouter upstream) needs minutes, not the default seconds, to
+#   come back. Backoff doubles from the base delay (4, 8, 16 ... 128 s by
+#   default); a provider's Retry-After is honored up to 5 minutes;
+# - the final review: one more turn checking the work against the task;
+# - a python_repl output cap keeping each output's start and end;
+# - a context ceiling: compact long before a 1M window fills.
+python3 - "$retry_max_retries" "$retry_base_delay_ms" "$final_review" "$final_review_thinking" \
+  "$tool_output_max_chars" "$max_context_tokens" <<'PY' |
+import json, sys
+retries, base, review, review_thinking, output_chars, context = sys.argv[1:]
+print(json.dumps({
+    "retry": {"enabled": True, "maxRetries": int(retries), "baseDelayMs": int(base),
+              "provider": {"maxRetryDelayMs": 300000}},
+    "headless": {"finalReview": review == "1", "finalReviewThinkingLevel": review_thinking},
+    "toolOutput": {"maxChars": int(output_chars)},
+    "compaction": {"maxContextTokens": int(context)},
+}))
+PY
   docker exec -i "$agent" sh -c 'mkdir -p /root/.prime/agent && cat > /root/.prime/agent/settings.json'
 
+# DeepSeek through OpenRouter: prefer DeepSeek's own servers, so a session
+# stays on one host and keeps its prompt cache (other hosts cost cache hits
+# and time); other hosts remain the fallback.
+case "$provider/$model" in
+  openrouter/deepseek/*)
+    printf '{"providers": {"openrouter": {"modelOverrides": {"%s": {"compat": {"openRouterRouting": {"order": ["deepseek"], "allow_fallbacks": true}}}}}}}\n' "$model" |
+      docker exec -i "$agent" sh -c 'cat > /root/.prime/agent/models.json' ;;
+esac
+
 # --- agent ------------------------------------------------------------------
+# The system prompt tells the model it can install packages; this sandbox
+# cannot reach a package index, so every attempt is a wasted call.
+offline_note="This sandbox has no network access except the model API: nothing can be installed or downloaded. Use the tools and dependencies already installed in the repository's environment."
 docker network disconnect bridge "$agent"
 docker network connect "$net" "$agent"
 
@@ -144,6 +178,7 @@ agent_start=$(now)
   "$agent" "${inner_timeout[@]}" \
   /opt/prime-agent/prime-agent -p --offline \
     --provider "$provider" --model "$model" --thinking "$thinking" \
+    --append-system-prompt "$offline_note" \
     "$(cat "$task_dir/instruction.md")" \
   > "$out/agent/stdout.txt" 2> "$out/agent/stderr.txt"
 agent_exit=$?
