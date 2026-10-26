@@ -11,10 +11,13 @@ use serde::Deserialize;
 
 pub const MODEL_PROMPTS_TOML: &str = include_str!("layers/model_prompts.toml");
 
-const MODEL_PROMPT_FILES: &[(&str, &str)] = &[(
-    "bash-over-subprocess.md",
-    include_str!("layers/bash-over-subprocess.md"),
-)];
+const MODEL_PROMPT_FILES: &[(&str, &str)] = &[
+    (
+        "bash-over-subprocess.md",
+        include_str!("layers/bash-over-subprocess.md"),
+    ),
+    ("deepseek-v4.md", include_str!("layers/deepseek-v4.md")),
+];
 
 const USER_MODEL_PROMPTS_TOML: &str = "model-prompts.toml";
 
@@ -485,6 +488,28 @@ files = ["shared.md", "user-only.md"]
 
         let other = load_model_prompts(Some("anthropic/claude-sonnet-4"), empty.path());
         assert_eq!(other, ModelPromptResolution::default());
+    }
+
+    #[test]
+    fn shipped_deepseek_rule_applies_to_deepseek_v4_models_only() {
+        let empty = tempfile::tempdir().unwrap();
+        let expected = MODEL_PROMPT_FILES
+            .iter()
+            .find(|(name, _)| *name == "deepseek-v4.md")
+            .map(|(_, content)| (*content).trim())
+            .expect("the shipped file table names deepseek-v4.md");
+        // Direct, through OpenRouter, and the pro model alike.
+        for selector in [
+            "deepseek/deepseek-v4-flash",
+            "openrouter/deepseek/deepseek-v4-flash",
+            "deepseek/deepseek-v4-pro",
+        ] {
+            let resolution = load_model_prompts(Some(selector), empty.path());
+            assert!(resolution.errors.is_empty(), "{:#?}", resolution.errors);
+            assert_eq!(resolution.extras.as_deref(), Some(expected), "{selector}");
+        }
+        let older = load_model_prompts(Some("deepseek/deepseek-v3.2"), empty.path());
+        assert_eq!(older, ModelPromptResolution::default());
     }
 
     #[test]

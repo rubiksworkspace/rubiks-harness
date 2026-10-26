@@ -7,3 +7,7 @@
 [[rule]]
 match = ["glm-5.3*"]
 files = ["bash-over-subprocess.md"]
+
+[[rule]]
+match = ["deepseek-v4*"]
+files = ["deepseek-v4.md"]

@@ -1124,3 +1124,65 @@ fn print_mode_stops_nudging_a_model_that_only_thinks() {
         "stderr: {stderr}"
     );
 }
+
+// Final review (`headless.finalReview`): one more turn before an unattended run answers.
+
+const FINAL_REVIEW_PROMPT: &str = "Before you finish, review your work against the task:
+1. Go through every requirement and interface item in the task one by one, and name the code that satisfies each. Implement anything missing.
+2. For behaviour you have not exercised yet, write or run a small, focused test, and fix what fails.
+3. Run `git status` and `git diff`, and remove debugging code, stray files and changes the task did not ask for.
+Then give your final answer.";
+
+/// A turn that did some work: a tool call (to a tool that does not exist,
+/// so no kernel starts), then its answer.
+fn worked_turn() -> Vec<serde_json::Value> {
+    vec![
+        serde_json::json!({ "content": [
+            { "type": "toolCall", "name": "no_such_tool", "arguments": {} }
+        ] }),
+        serde_json::json!("first answer"),
+    ]
+}
+
+#[test]
+fn print_mode_final_review_runs_once_after_the_work() {
+    let home = isolated_home();
+    write_compaction_settings(
+        home.path(),
+        &serde_json::json!({ "headless": { "finalReview": true } }),
+    );
+    let mut responses = worked_turn();
+    responses.push(serde_json::json!("reviewed answer"));
+    let script = serde_json::json!({ "responses": responses });
+    let (stdout, stderr, code) = run_in_home(home.path(), &["-p", "the task"], &script);
+    assert_eq!(code, 0, "stderr: {stderr}");
+    assert_eq!(stdout, "reviewed answer\n");
+    assert_eq!(
+        user_texts(home.path()),
+        vec!["the task".to_string(), FINAL_REVIEW_PROMPT.to_string()]
+    );
+}
+
+#[test]
+fn print_mode_runs_no_final_review_unless_enabled() {
+    let home = isolated_home();
+    let script = serde_json::json!({ "responses": worked_turn() });
+    let (stdout, stderr, code) = run_in_home(home.path(), &["-p", "the task"], &script);
+    assert_eq!(code, 0, "stderr: {stderr}");
+    assert_eq!(stdout, "first answer\n");
+    assert_eq!(user_texts(home.path()), vec!["the task".to_string()]);
+}
+
+#[test]
+fn print_mode_skips_the_final_review_when_no_work_was_done() {
+    let home = isolated_home();
+    write_compaction_settings(
+        home.path(),
+        &serde_json::json!({ "headless": { "finalReview": true } }),
+    );
+    let script = serde_json::json!({ "responses": ["plain answer"] });
+    let (stdout, stderr, code) = run_in_home(home.path(), &["-p", "the question"], &script);
+    assert_eq!(code, 0, "stderr: {stderr}");
+    assert_eq!(stdout, "plain answer\n");
+    assert_eq!(user_texts(home.path()), vec!["the question".to_string()]);
+}

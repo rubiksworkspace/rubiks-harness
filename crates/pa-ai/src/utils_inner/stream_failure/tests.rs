@@ -484,3 +484,34 @@ fn stream_drop_failures_disclose_the_class_and_block() {
         "Provider dropped the response stream (stream_drop): the stream ended before any response content or stop signal"
     );
 }
+
+#[test]
+fn openrouter_in_flight_credit_hold_is_a_wait_not_a_payment_failure() {
+    let http = |message: &str| {
+        ProviderError::Http(ProviderHttpError {
+            message: format!("402 {message}"),
+            status: Some(402),
+            body: Some(
+                serde_json::json!({ "error": { "code": 402, "message": message } }).to_string(),
+            ),
+            headers: HashMap::default(),
+            request_id: None,
+            sdk_name: None,
+            retry_after_ms: None,
+            provider_error_type: None,
+        })
+    };
+    let held = http(
+        "This request would exceed your available credits given your current in-flight requests. Retry after in-flight requests settle, or add credits.",
+    );
+    assert_eq!(
+        extract_stream_failure_info(&held).kind,
+        StreamFailureKind::RateLimit
+    );
+    // A drained wallet stays a payment failure.
+    let drained = http("This request requires more credits, or fewer max_tokens.");
+    assert_eq!(
+        extract_stream_failure_info(&drained).kind,
+        StreamFailureKind::PaymentRequired
+    );
+}

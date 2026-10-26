@@ -358,10 +358,12 @@ fn convert_execute_result(
 pub fn ipython_tool_options(
     provisioner: Arc<KernelProvisioner>,
     on_late_sent_agent_message: Option<crate::tools::ipython::LateSentAgentMessageHandler>,
+    max_output_chars: Option<usize>,
 ) -> IpythonToolOptions {
     IpythonToolOptions {
         provisioner,
         ui: None,
         on_late_sent_agent_message,
+        max_output_chars,
     }
 }

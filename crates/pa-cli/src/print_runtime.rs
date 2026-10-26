@@ -1471,11 +1471,27 @@ async fn run_prompts_and_emit(
     // exits 1.
     let mut command_failure: Option<String> = None;
     // The `@file` image attachments ride the initial prompt only; the later CLI messages stay text.
-    'prompts: for (prompt, images) in options
+    // `headless.finalReview`: after the last prompt's turn settles, the model
+    // checks its work against the task once more before it answers.
+    let headless =
+        pa_core::settings::SettingsManager::create(&options.config.cwd, &options.config.agent_dir)
+            .settings()
+            .headless
+            .clone()
+            .unwrap_or_default();
+    let final_review_level = headless.final_review_thinking_level.map(|level| {
+        map_thinking_level(pa_ai::models::clamp_thinking_level(
+            model,
+            level.model_level(),
+        ))
+    });
+    let prompt_count = options.initial_message.iter().count() + options.messages.len();
+    'prompts: for (index, (prompt, images)) in options
         .initial_message
         .iter()
         .map(|prompt| (prompt, options.initial_images.clone()))
         .chain(options.messages.iter().map(|prompt| (prompt, Vec::new())))
+        .enumerate()
     {
         // Session commands never reach the model loop: the pre-turn boundary stays theirs to skip
         // and the prompt's turn never exists.
@@ -1536,17 +1552,33 @@ async fn run_prompts_and_emit(
             .run_at_settled_turn(engine, model, api_key.clone(), global_harness_dir.clone())
             .await?;
         // Nobody is there to answer a reply that stopped with only thinking:
-        // nudge it to continue, a bounded number of times. Goal and
-        // autonomous runs read an empty turn as no progress and stay theirs.
+        // nudge it to continue, a bounded number of times; then, after the
+        // last prompt, run the final review once. Goal and autonomous runs
+        // read an empty turn as no progress and own continuing the run.
         if options.config.autonomous.is_none() {
             let mut nudges = 0;
-            while nudges < MAX_EMPTY_REPLY_NUDGES
-                && engine
-                    .nudge_empty_reply()
-                    .await
-                    .map_err(|error| format!("{error:#}"))?
-            {
-                nudges += 1;
+            let mut review_pending =
+                headless.final_review == Some(true) && index + 1 == prompt_count;
+            loop {
+                if nudges < MAX_EMPTY_REPLY_NUDGES
+                    && engine
+                        .nudge_empty_reply()
+                        .await
+                        .map_err(|error| format!("{error:#}"))?
+                {
+                    nudges += 1;
+                } else if review_pending {
+                    review_pending = false;
+                    if !engine
+                        .run_final_review(final_review_level)
+                        .await
+                        .map_err(|error| format!("{error:#}"))?
+                    {
+                        break;
+                    }
+                } else {
+                    break;
+                }
                 boundary
                     .run_at_settled_turn(engine, model, api_key.clone(), global_harness_dir.clone())
                     .await?;

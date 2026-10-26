@@ -740,6 +740,18 @@ fn extract_parts_from_http(error: &ProviderHttpError) -> ExtractedParts {
     {
         kind = classify_stream_failure(None, error.status);
     }
+    // OpenRouter answers 402 when the credit its in-flight requests have reserved leaves too
+    // little for this one ("Retry after in-flight requests settle"): the wallet is not drained,
+    // the concurrent requests' holds are, and they release as those requests finish. That
+    // is a wait, not a payment failure.
+    if kind == StreamFailureKind::PaymentRequired
+        && [body_message.as_deref(), Some(error.message.as_str())]
+            .into_iter()
+            .flatten()
+            .any(|text| text.contains("in-flight requests settle"))
+    {
+        kind = StreamFailureKind::RateLimit;
+    }
 
     ExtractedParts {
         info: StreamFailureInfo {

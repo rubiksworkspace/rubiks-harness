@@ -1935,3 +1935,38 @@ async fn permanent_provider_failure_never_retries() {
     );
     assert!(retry_events(&events.lock().unwrap()).is_empty());
 }
+
+#[tokio::test]
+async fn the_final_review_restores_the_session_thinking_level() {
+    let _faux = FAUX_TEST_LOCK.lock().await;
+    let (engine, _dir, model) = faux_engine_with_settings(
+        json!({ "responses": [
+            { "content": [{ "type": "toolCall", "name": "no_such_tool", "arguments": {} }] },
+            "first answer",
+            "reviewed answer",
+        ] }),
+        json!({}),
+        None,
+    )
+    .await;
+    let mut boundary = TurnBoundary::new(false);
+    admit(&mut boundary, &engine, &model, "the task".to_string())
+        .await
+        .unwrap();
+    let agent = engine.session.agent();
+    agent
+        .set_thinking_level(pa_agent::types::ThinkingLevel::Low)
+        .await;
+    assert!(engine
+        .run_final_review(Some(pa_agent::types::ThinkingLevel::High))
+        .await
+        .unwrap());
+    assert_eq!(
+        agent.state().await.thinking_level,
+        pa_agent::types::ThinkingLevel::Low
+    );
+    assert_eq!(
+        settled_reply(&engine).await,
+        (pa_types::ai::StopReason::Stop, json!("reviewed answer"))
+    );
+}
