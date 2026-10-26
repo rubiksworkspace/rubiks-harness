@@ -334,6 +334,9 @@ pub struct IpythonToolOptions {
     /// UI surface; `None` in headless sessions.
     pub ui: Option<Arc<dyn IpythonToolUi>>,
     pub on_late_sent_agent_message: Option<LateSentAgentMessageHandler>,
+    /// `toolOutput.maxChars`: cap the result text at this many characters,
+    /// keeping its start and its end. `None` keeps the kernel's limit only.
+    pub max_output_chars: Option<usize>,
 }
 
 pub fn ipython_tool_schema() -> serde_json::Value {
@@ -366,6 +369,15 @@ pub async fn execute_ipython(
     on_update: Option<OnUpdate>,
     on_late_sent_agent_message: Option<crate::kernel::shared::LateSentAgentMessageCallback>,
 ) -> anyhow::Result<ToolExecutionResult> {
+    // An empty cell runs nothing; say so instead of returning a silent empty
+    // result the model reads as "done".
+    if code.trim().is_empty() {
+        return Ok(ToolExecutionResult {
+            content: vec![ToolContentBlock::text(EMPTY_CODE_MESSAGE.to_string())],
+            details: Some(json!({ "status": "error", "kernelRestarted": false })),
+            is_error: true,
+        });
+    }
     let set_tool_working_message = |message: Option<&str>| {
         if let Some(ui) = &options.ui {
             ui.set_working_message(message);
@@ -428,6 +440,10 @@ pub async fn execute_ipython(
         };
     }
 
+    if let Some(max_chars) = options.max_output_chars {
+        text = keep_output_ends(&text, max_chars);
+    }
+
     let image_blocks = image_blocks_from_attachments(&r.attachments);
     let mut content = vec![ToolContentBlock::text(text)];
     content.extend(image_blocks);
@@ -483,6 +499,27 @@ pub async fn execute_ipython(
         details: Some(details),
         is_error: r.status == ExecuteStatus::Error || r.status == ExecuteStatus::Aborted,
     })
+}
+
+/// The reply to a `python_repl` call whose `code` was empty.
+pub const EMPTY_CODE_MESSAGE: &str =
+    "The `code` argument was empty, so nothing ran. Send the Python to run in `code`.";
+
+/// Cap `text` at `max_chars` characters, keeping its first two thirds and its
+/// last third: a test run's summary and an error's last frames sit at the end.
+fn keep_output_ends(text: &str, max_chars: usize) -> String {
+    let total = text.chars().count();
+    if total <= max_chars {
+        return text.to_string();
+    }
+    let head_chars = max_chars * 2 / 3;
+    let tail_chars = max_chars - head_chars;
+    let head: String = text.chars().take(head_chars).collect();
+    let tail: String = text.chars().skip(total - tail_chars).collect();
+    let omitted = total - head_chars - tail_chars;
+    format!(
+        "{head}\n[... {omitted} characters omitted from the middle of this output; print a narrower slice to see them ...]\n{tail}"
+    )
 }
 
 /// The `python_repl` tool definition: exact name, schema, and description.
@@ -583,6 +620,67 @@ mod tests {
                 "deliveryStatus": "queued",
                 "target": { "activeSessionId": "a1", "sessionId": "s1" },
             })
+        );
+    }
+
+    #[test]
+    fn output_within_the_cap_is_unchanged() {
+        assert_eq!(keep_output_ends("short output", 100), "short output");
+    }
+
+    #[test]
+    fn output_over_the_cap_keeps_its_start_and_end() {
+        let text = format!("{}{}{}", "a".repeat(10), "m".repeat(80), "z".repeat(10));
+        assert_eq!(
+            keep_output_ends(&text, 15),
+            format!(
+                "{}\n[... 85 characters omitted from the middle of this output; print a narrower slice to see them ...]\n{}",
+                "a".repeat(10),
+                "z".repeat(5)
+            )
+        );
+    }
+
+    /// A provisioner that fails the test if anything starts the kernel.
+    struct NoKernel;
+
+    impl IpythonKernelProvisioner for NoKernel {
+        fn ensure(
+            &self,
+            _on_progress: Option<BootstrapProgressHandler>,
+            _signal: Option<AbortSignal>,
+        ) -> EnsureFuture {
+            panic!("an empty cell must not start the kernel")
+        }
+
+        fn kill(&self) -> Pin<Box<dyn Future<Output = ()> + Send>> {
+            panic!("an empty cell must not touch the kernel")
+        }
+    }
+
+    #[tokio::test]
+    async fn an_empty_cell_is_rejected_without_running() {
+        let options = IpythonToolOptions {
+            provisioner: Arc::new(NoKernel),
+            ui: None,
+            on_late_sent_agent_message: None,
+            max_output_chars: None,
+        };
+        let result = execute_ipython(&options, "  \n ", None, None, None)
+            .await
+            .expect("an empty cell answers");
+        assert_eq!(
+            (
+                serde_json::to_value(&result.content).unwrap(),
+                result.details,
+                result.is_error
+            ),
+            (
+                serde_json::to_value(vec![ToolContentBlock::text(EMPTY_CODE_MESSAGE.to_string())])
+                    .unwrap(),
+                Some(json!({ "status": "error", "kernelRestarted": false })),
+                true
+            )
         );
     }
 }

@@ -241,6 +241,12 @@ pub async fn create_session(mut config: SessionEngineConfig) -> anyhow::Result<S
     // compaction budget and the auto-refine gates.
     let compaction_settings = settings.settings().compaction.clone().unwrap_or_default();
     let provider_retry_policy = settings.get_provider_retry_policy();
+    let tool_output_max_chars = settings
+        .settings()
+        .tool_output
+        .as_ref()
+        .and_then(|tool_output| tool_output.max_chars)
+        .and_then(|max_chars| usize::try_from(max_chars).ok());
     let auto_refine_gates =
         super::refine::AutoRefineGates::from_settings(settings.settings().auto_refine.as_ref());
     // Request timing: the settings half of the flag is read once here
@@ -443,6 +449,7 @@ pub async fn create_session(mut config: SessionEngineConfig) -> anyhow::Result<S
             super::runtime_wiring::ipython_tool_options(
                 provisioner.clone(),
                 config.on_late_sent_agent_message.clone(),
+                tool_output_max_chars,
             ),
         );
         tools.push(Arc::new(
