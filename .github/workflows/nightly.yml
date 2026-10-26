@@ -62,15 +62,9 @@
 
 name: nightly
 
+# Started by hand only (Actions tab → Run workflow): no push, tag, pull
+# request, issue or schedule runs.
 on:
-  # The rolling beta (the operator's ruling): every push to `main` fires a
-  # cut for that commit; the cut waits out the pushed commit's continuous
-  # CI before tagging (the proven-built evidence).
-  push:
-    branches:
-      - main
-  # The operator's supervised cut: resolves the newest proven-green commit
-  # instead of a pushed one (the walk).
   workflow_dispatch: {}
 
 permissions: {}

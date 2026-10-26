@@ -7,9 +7,9 @@
 #   https://github.com/<owner>/<repo>/releases/download/harness-latest/Prime-Agent-Rubiks-arm64.dmg
 name: Prime Agent (Rubiks) DMG
 
+# Started by hand only (Actions tab → Run workflow): no push, tag, pull
+# request, issue or schedule runs.
 on:
-  push:
-    branches: [gpl-3.0]
   workflow_dispatch:
 
 # A newer push makes an older build pointless: cancel it.

@@ -15,6 +15,8 @@
 # dumps as run artifacts the fleet can download and inspect.
 name: windows-runtime-triage
 
+# Started by hand only (Actions tab → Run workflow): no push, tag, pull
+# request, issue or schedule runs.
 on:
   workflow_dispatch:
     inputs:
@@ -22,25 +24,6 @@ on:
         description: "The ref to battery on Windows (branch, tag, or SHA; empty = this branch's head)"
         required: false
         default: ""
-  # The PR wave: every Windows-touched PR (crate source, the Windows
-  # installers, the workflow itself, the build manifests) runs the tui
-  # battery before review - the repeatable Windows verifier every future
-  # lane gets for free, without a persistent VM.
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-    branches: [main]
-    paths:
-      - "crates/**"
-      - ".github/workflows/windows-runtime-triage.yml"
-      - "install.ps1"
-      - "install-rust.sh"
-      - "scripts/**"
-      - "Cargo.toml"
-      - "Cargo.lock"
-  # The nightly wave: main gets the battery every night even when no PR
-  # touched it (the schedule trigger runs on the default branch only).
-  schedule:
-    - cron: "0 4 * * *"
 
 permissions:
   contents: read

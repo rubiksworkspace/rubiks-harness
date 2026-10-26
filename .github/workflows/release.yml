@@ -25,14 +25,10 @@
 
 name: release
 
+# Started by hand only (Actions tab → Run workflow): no push, tag, pull
+# request, issue or schedule runs.
 on:
-  push:
-    tags:
-      # A plain tag publishes the stable channel (latest.json); a -beta*
-      # prerelease tag publishes the nightly channel (beta.json) - the two
-      # channels pa-core::update::version::UpdateChannel reads.
-      - "v[0-9]+.[0-9]+.[0-9]+"
-      - "v[0-9]+.[0-9]+.[0-9]+-beta*"
+  workflow_dispatch:
 
 permissions: {}
 

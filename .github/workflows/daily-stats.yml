@@ -1,9 +1,8 @@
 name: Prime Agent daily stats
 
+# Started by hand only (Actions tab → Run workflow): no push, tag, pull
+# request, issue or schedule runs.
 on:
-  schedule:
-    - cron: '0 9 * * *'
-      timezone: America/Los_Angeles
   workflow_dispatch:
     inputs:
       date:
@@ -14,11 +13,6 @@ on:
         description: Send the report to Slack (requires PRIME_AGENT_STATS_ENABLED)
         type: boolean
         default: false
-  pull_request:
-    paths:
-      - .github/workflows/daily-stats.yml
-      - scripts/daily_stats.py
-      - scripts/test_daily_stats.py
 
 permissions:
   contents: read

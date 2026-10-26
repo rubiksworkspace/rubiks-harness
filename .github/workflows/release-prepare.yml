@@ -41,6 +41,8 @@
 
 name: release-prepare
 
+# Started by hand only (Actions tab → Run workflow): no push, tag, pull
+# request, issue or schedule runs.
 on:
   workflow_dispatch:
     inputs:
@@ -48,10 +50,6 @@ on:
         description: "The release version (x.y.z, no v prefix)"
         required: true
         type: string
-  pull_request:
-    types: [closed]
-    # The pull_request branches filter applies to the PR's base branch.
-    branches: [main]
 
 permissions: {}
 

@@ -1,7 +1,9 @@
 # Non-blocking, PR-only guidance for files growing past 2,000 lines.
 name: codebase-health
+# Started by hand only (Actions tab → Run workflow): no push, tag, pull
+# request, issue or schedule runs.
 on:
-  pull_request:
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:

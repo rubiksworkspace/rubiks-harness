@@ -1,18 +1,14 @@
 name: Prime discussion notifications
 
+# Started by hand only (Actions tab → Run workflow): no push, tag, pull
+# request, issue or schedule runs.
 on:
-  schedule:
-    - cron: '7-57/10 * * * *'
   workflow_dispatch:
     inputs:
       dry_run:
         description: Preview without sending messages or updating state
         type: boolean
         default: true
-  pull_request:
-    paths:
-      - .github/workflows/discussion-slack.yml
-      - .github/scripts/discussion-notifier/**
 
 permissions: {}
 

@@ -16,6 +16,8 @@
 # be downloaded by any signed-in GitHub user.
 name: SWE-bench Pro
 
+# Started by hand only (Actions tab → Run workflow): no push, tag, pull
+# request, issue or schedule runs.
 on:
   workflow_dispatch:
     inputs:
