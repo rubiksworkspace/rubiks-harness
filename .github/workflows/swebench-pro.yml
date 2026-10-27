@@ -1,8 +1,9 @@
 # Runs the Rubiks harness (Prime Agent) on SWE-bench Pro V2 and keeps every
-# piece of data the harness produces. Runs only when started by hand (Actions
-# tab → SWE-bench Pro → Run workflow, or `gh workflow run swebench-pro.yml`):
-# a push never starts it. By default: the 100 harness-stressing tasks of
-# harness100.csv on DeepSeek V4 Flash.
+# piece of data the harness produces. Runs on every push to main (the only
+# workflow in this repository that starts on its own) and by hand (Actions
+# tab → SWE-bench Pro → Run workflow, or `gh workflow run swebench-pro.yml`).
+# A push runs the defaults: the 100 harness-stressing tasks of harness100.csv
+# on DeepSeek V4 Flash at high thinking, through OpenRouter.
 #
 #   build      the static Linux harness + uv, and the task list
 #   task (×N)  one job per task, `parallel` at a time (default 10): run_task.sh (setup → offline
@@ -16,9 +17,9 @@
 # be downloaded by any signed-in GitHub user.
 name: SWE-bench Pro
 
-# Started by hand only (Actions tab → Run workflow): no push, tag, pull
-# request, issue or schedule runs.
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       count:
