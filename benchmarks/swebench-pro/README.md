@@ -57,6 +57,16 @@ the model the sandbox is offline, so it does not try to install packages.
 `empty_code_calls`, `max_tool_output_chars`, `test_runs`, `retries`,
 `empty_reply_nudges` and `final_review`.
 
+## Credit check
+
+The first job checks the model API's credit before anything is built and
+stops the run when it is short (input `min_credit`, default 10 US dollars):
+the OpenRouter key's remaining limit, plus one request with the run's
+32000-token budget, which an empty account refuses with 402; or the DeepSeek
+balance when the provider is `deepseek`. Three earlier runs lost most of
+their tasks to an empty OpenRouter wallet midway. A full 100-task DeepSeek
+V4 Flash run costs about $5–8.
+
 ## The harness100 task pool
 
 On a random 100 tasks the model resolved 97: the task statements spell out

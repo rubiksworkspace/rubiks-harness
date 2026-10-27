@@ -49,6 +49,9 @@ on:
       parallel:
         description: Tasks running at once (lower it for a rate-limited model; GitHub allows at most 20 concurrent jobs on this plan)
         default: "10"
+      min_credit:
+        description: Stop before building when the model API has less than this many US dollars of credit left
+        default: "10"
       seed:
         description: Task selection seed (same seed, same tasks)
         default: "1"
@@ -75,8 +78,81 @@ env:
   SEED: ${{ inputs.seed || '1' }}
 
 jobs:
+  # Three runs died midway on an empty OpenRouter wallet (402): check the
+  # credit before anything is built, and stop with a clear message.
+  credit:
+    name: Check model API credit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check the credit left
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          MIN_CREDIT: ${{ inputs.min_credit || '10' }}
+        run: |
+          python3 - <<'PY'
+          import json, os, sys, urllib.error, urllib.request
+
+          provider, model = os.environ["PROVIDER"], os.environ["MODEL"]
+          minimum = float(os.environ["MIN_CREDIT"])
+
+          def fail(message):
+              print(f"::error title=Not enough model API credit::{message}")
+              sys.exit(1)
+
+          def call(url, key, body=None):
+              request = urllib.request.Request(
+                  url,
+                  data=None if body is None else json.dumps(body).encode(),
+                  headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+              )
+              try:
+                  with urllib.request.urlopen(request, timeout=60) as response:
+                      return response.status, json.load(response)
+              except urllib.error.HTTPError as error:
+                  return error.code, error.read().decode(errors="replace")[:300]
+
+          if provider == "deepseek":
+              key = os.environ.get("DEEPSEEK_API_KEY") or fail("DEEPSEEK_API_KEY is not set")
+              status, body = call("https://api.deepseek.com/user/balance", key)
+              if status != 200:
+                  fail(f"DeepSeek balance check answered {status}: {body}")
+              balance = sum(float(info["total_balance"]) for info in body.get("balance_infos", []))
+              print(f"DeepSeek balance: {balance:.2f}")
+              if not body.get("is_available") or balance < minimum:
+                  fail(f"the DeepSeek account has {balance:.2f} left; this run needs at least {minimum:.2f}. Top it up at platform.deepseek.com.")
+              sys.exit(0)
+
+          key = os.environ.get("OPENROUTER_API_KEY") or fail("OPENROUTER_API_KEY is not set")
+          status, body = call("https://openrouter.ai/api/v1/key", key)
+          if status != 200:
+              fail(f"OpenRouter key check answered {status}: {body}")
+          remaining = body.get("data", {}).get("limit_remaining")
+          if remaining is not None:
+              print(f"OpenRouter key credit left: ${remaining:.2f}")
+              if remaining < minimum:
+                  fail(f"the OpenRouter key has ${remaining:.2f} of its limit left; this run needs at least ${minimum:.2f}. Raise the key's limit or add credit at openrouter.ai/settings.")
+          else:
+              print("::notice::The OpenRouter key has no credit limit; make sure the account itself has enough credit.")
+          # One request with the run's full output budget: an empty or nearly
+          # empty account answers 402 here, as every task would.
+          routed = model if "/" in model else f"deepseek/{model}"
+          status, body = call(
+              "https://openrouter.ai/api/v1/chat/completions",
+              key,
+              {"model": routed, "max_tokens": 32000, "messages": [{"role": "user", "content": "Reply with OK."}]},
+          )
+          if status == 402:
+              fail(f"OpenRouter refused a request with the run's 32000-token budget (402): {body}. Add credit at openrouter.ai/settings.")
+          if status != 200:
+              fail(f"OpenRouter test request answered {status}: {body}")
+          print(f"OpenRouter accepted a {routed} request with a 32000-token budget.")
+          PY
+
   build:
     name: Build harness and pick tasks
+    needs: credit
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     outputs:
