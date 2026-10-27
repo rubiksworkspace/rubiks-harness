@@ -105,15 +105,18 @@ jobs:
         run: |
           python3 scripts/release/bundle_catalog.py generate --network --out target/catalog-assets \
             || python3 scripts/release/bundle_catalog.py generate --fixture --out target/catalog-assets
+          # Staged outside target/: the rust-cache post step walks target/ and
+          # trips over the staged skills' tests/ folders.
+          bench="$RUNNER_TEMP/bench"
           python3 benchmarks/swebench-pro/stage_harness.py \
             --binary target/x86_64-unknown-linux-musl/release/prime-agent \
-            --catalog-assets target/catalog-assets --out target/bench/harness
+            --catalog-assets target/catalog-assets --out "$bench/harness"
           curl -fsSL https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-unknown-linux-musl.tar.gz \
-            | tar -xz -C target/bench --strip-components=1
-          target/bench/harness/prime-agent --version
-          target/bench/uv --version
+            | tar -xz -C "$bench" --strip-components=1
+          "$bench/harness/prime-agent" --version
+          "$bench/uv" --version
           # Artifacts drop file modes: ship a tarball.
-          tar -C target/bench -czf bench-harness.tar.gz harness uv
+          tar -C "$bench" -czf bench-harness.tar.gz harness uv
 
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
