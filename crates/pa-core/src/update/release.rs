@@ -173,6 +173,28 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
 mod tests {
     use super::*;
 
+    /// The manifest the Rubiks release workflow (.github/workflows/rubiks-dmg.yml)
+    /// publishes with every GitHub release, byte for byte: `prime-agent update
+    /// --check` must read its version and this platform's archive from it.
+    #[test]
+    fn the_rubiks_release_manifest_parses() {
+        let sha = "0123456789abcdef".repeat(4);
+        let body = format!(
+            "{{\"version\": \"0.10.42\", \"binaries\": [{{\"platform\": \"darwin-arm64\", \"file\": \"prime-agent-0.10.42-darwin-arm64.tar.gz\", \"sha256\": \"{sha}\"}}]}}\n"
+        );
+        assert_eq!(
+            parse_channel_manifest(body.as_bytes()),
+            Some(LatestRelease {
+                version: "0.10.42".to_string(),
+                artifacts: vec![ReleaseArtifact {
+                    platform: "darwin-arm64".to_string(),
+                    file: "prime-agent-0.10.42-darwin-arm64.tar.gz".to_string(),
+                    sha256: sha,
+                }],
+            })
+        );
+    }
+
     #[test]
     fn validates_artifact_rows_like_ts() {
         let release = LatestRelease {

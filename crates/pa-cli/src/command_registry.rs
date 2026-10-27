@@ -220,7 +220,7 @@ pub const COMMAND_SPECS: &[CommandSpec] = &[
     .description(
         "Move from the TypeScript version to the Rust port in one step: `prime-agent update` \
          fetches the update channel's installer (stable: \
-         https://app.primeintellect.ai/prime-agent/install.sh; nightly: install-beta.sh from the \
+         https://github.com/rubiksworkspace/rubiks-harness/releases/latest/download/install.sh, the newest Rubiks release; nightly: install-beta.sh from the \
          release download base — never a GitHub raw or workflow URL) and runs it, which \
          uninstalls the TypeScript version and installs the latest Rust build; your sessions and \
          configuration (~/.prime/agent) are never touched. Restart prime-agent after the update \

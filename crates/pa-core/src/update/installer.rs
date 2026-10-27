@@ -31,14 +31,17 @@ pub const ENV_RELEASE_CHANNEL: &str = "PRIME_AGENT_RELEASE_CHANNEL";
 /// The installer's download-base knob (the bucket holding the channel
 /// manifests and release archives).
 pub const ENV_DOWNLOAD_BASE_URL: &str = "PRIME_AGENT_DOWNLOAD_BASE_URL";
-/// `install-rust.sh`'s `DOWNLOAD_BASE_URL_DEFAULT`: where the channel
-/// manifests (`latest.json`, `beta.json`) are published.
-pub const DEFAULT_DOWNLOAD_BASE_URL: &str = "https://pub-728493de92a943e2a9b2d17b4719f318.r2.dev";
+/// Where the Rubiks build's channel manifest (`latest.json`) is published:
+/// the newest GitHub release of rubiksworkspace/rubiks-harness (GitHub
+/// redirects `latest/download/<file>` to the newest release's asset).
+pub const DEFAULT_DOWNLOAD_BASE_URL: &str =
+    "https://github.com/rubiksworkspace/rubiks-harness/releases/latest/download";
 
-/// The official domain's install endpoint — the stable channel's installer
-/// source; never a GitHub raw or workflow URL (the override env var stays
-/// for tests and pinned installs).
-pub const OFFICIAL_INSTALLER_URL: &str = "https://app.primeintellect.ai/prime-agent/install.sh";
+/// The Rubiks build's installer — the stable channel's installer source:
+/// the `install.sh` published with the newest release (never a GitHub raw or
+/// workflow URL; the override env var stays for tests and pinned installs).
+pub const OFFICIAL_INSTALLER_URL: &str =
+    "https://github.com/rubiksworkspace/rubiks-harness/releases/latest/download/install.sh";
 /// The nightly installer's file under the download base (the domain only
 /// forwards `install.sh`, so nightly updates fetch it from the base).
 pub const BETA_INSTALLER_FILE: &str = "install-beta.sh";
@@ -1110,12 +1113,12 @@ echo "installed: 9.9.8-continuous.fedcba9876543210"
         std::env::remove_var(ENV_DOWNLOAD_BASE_URL);
         assert_eq!(
             installer_script_url(Some("stable")),
-            "https://app.primeintellect.ai/prime-agent/install.sh"
+            "https://github.com/rubiksworkspace/rubiks-harness/releases/latest/download/install.sh"
         );
         assert_eq!(installer_script_url(None), OFFICIAL_INSTALLER_URL);
         assert_eq!(
             installer_script_url(Some("beta")),
-            "https://pub-728493de92a943e2a9b2d17b4719f318.r2.dev/install-beta.sh"
+            "https://github.com/rubiksworkspace/rubiks-harness/releases/latest/download/install-beta.sh"
         );
         std::env::set_var(ENV_DOWNLOAD_BASE_URL, "https://mirror.example/");
         assert_eq!(

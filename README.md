@@ -40,11 +40,16 @@ Prime Agent is an open-source coding and research agent for general and long-run
 
 ## Install
 
-Install the latest stable version with the one-command installer:
+Install the latest Rubiks build (Apple silicon) with the one-command installer:
 
 ```bash
-curl -fsSL https://app.primeintellect.ai/prime-agent/install.sh | sh
+curl -fsSL https://github.com/rubiksworkspace/rubiks-harness/releases/latest/download/install.sh | sh
 ```
+
+Every push to `main` publishes a new numbered release
+([Releases](https://github.com/rubiksworkspace/rubiks-harness/releases)), with
+a DMG for a double-click install. `prime-agent update` installs the newest
+release, and the Rubiks IDE keeps it up to date on its own.
 
 On Windows, install from PowerShell:
 

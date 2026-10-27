@@ -1,34 +1,42 @@
-# Builds Prime Agent (Rubiks) for Apple silicon when started by hand (Actions
-# tab → Run workflow). Each run keeps the DMG as a workflow artifact for 30
-# days. A run from main also replaces the "harness-latest" release, which
-# holds:
-#   Prime-Agent-Rubiks-arm64.dmg              the DMG: the release archive
-#                                             `make package` builds, the release
-#                                             installer and a double-click
-#                                             "Install Prime Agent" script
+# Builds and publishes Prime Agent (Rubiks) for Apple silicon on every push to
+# main (and by hand from the Actions tab). Each build gets its own version,
+# <major>.<minor>.<build number> (major and minor from Cargo.toml, the build
+# number from this workflow's run number), and a run from main publishes it as
+# a GitHub release tagged v<version>, marked latest. The newest release's files
+# are always at
+#   https://github.com/<owner>/<repo>/releases/latest/download/<file>
+# with these files:
+#   Prime-Agent-Rubiks-arm64.dmg              the DMG: the release archive,
+#                                             the release installer and a
+#                                             double-click "Install Prime
+#                                             Agent" script
 #   prime-agent-<version>-darwin-arm64.tar.gz the release archive
-#   install-rust.sh                           the release installer
-#   install.sh                                the one-line installer the Rubiks
-#                                             IDE runs (scripts/release/rubiks-install.sh):
-#     curl -fsSL https://github.com/<owner>/<repo>/releases/download/harness-latest/install.sh | sh
-name: Prime Agent (Rubiks) DMG
+#   install.sh                                the one-line installer
+#                                             (scripts/release/rubiks-install.sh)
+#   install-rust.sh                           the release installer it runs
+#   latest.json, SHA256SUMS                   the channel manifest `prime-agent
+#                                             update --check` reads, and the
+#                                             archive's checksum
+# `prime-agent update` and the Rubiks IDE install the newest release from
+# there. Older releases stay listed, so the version history is visible.
+name: Prime Agent (Rubiks) release
 
-# Started by hand only (Actions tab → Run workflow): no push, tag, pull
-# request, issue or schedule runs.
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 # A newer push makes an older build pointless: cancel it.
 concurrency:
-  group: rubiks-harness-dmg-${{ github.ref }}
+  group: rubiks-harness-release-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
-  contents: write # replaces the harness-latest release
+  contents: write # creates the release
 
 jobs:
-  dmg:
-    name: Build DMG (Apple silicon)
+  release:
+    name: Build and release (Apple silicon)
     runs-on: macos-15
     timeout-minutes: 90
     env:
@@ -41,54 +49,98 @@ jobs:
 
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
 
+      - name: Pick the version
+        id: version
+        run: |
+          base="$(sed -n 's/^version *= *"\([0-9]*\.[0-9]*\)\..*/\1/p' Cargo.toml | head -1)"
+          test -n "$base"
+          version="${base}.${GITHUB_RUN_NUMBER}"
+          echo "Version: $version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
       - name: Build and package the release archive
-        # The live model catalog, like the published releases; the offline
+        # The build's version goes into the workspace version (compiled into
+        # the binary; cargo updates Cargo.lock to match) and into the
+        # archive's package.json: the packager checks both report it. The
+        # live model catalog, like the published releases; the offline
         # snapshot keeps the build going if the catalog cannot be reached.
-        run: make package CATALOG_ASSETS_MODE=network || make package CATALOG_ASSETS_MODE=fixture
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          python3 - <<'PY'
+          import os, re
+          text = open("Cargo.toml").read()
+          text, count = re.subn(r'(\[workspace\.package\]\nversion = ")[^"]+(")',
+                                rf'\g<1>{os.environ["VERSION"]}\2', text, count=1)
+          assert count == 1, "no [workspace.package] version in Cargo.toml"
+          open("Cargo.toml", "w").write(text)
+          PY
+          grep -n -m1 '^version' Cargo.toml
+          make package CATALOG_ASSETS_MODE=network RELEASE_PACKAGE_FLAGS="--version $VERSION" \
+            || make package CATALOG_ASSETS_MODE=fixture RELEASE_PACKAGE_FLAGS="--version $VERSION"
 
       - name: Check the archive installs
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          archive="$(ls target/release-package/prime-agent-*-darwin-arm64.tar.gz)"
+          archive="target/release-package/prime-agent-${VERSION}-darwin-arm64.tar.gz"
+          test -f "$archive"
           PRIME_AGENT_ARCHIVE_CHECK=1 sh install-rust.sh --archive "$archive"
 
-      - name: Build the DMG
-        id: dmg
+      - name: Build the release files
+        id: files
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          archive="$(ls target/release-package/prime-agent-*-darwin-arm64.tar.gz)"
+          archive="prime-agent-${VERSION}-darwin-arm64.tar.gz"
+          out="target/release-files"
           stage="target/dmg/Prime Agent (Rubiks)"
-          rm -rf target/dmg
-          mkdir -p "$stage"
-          cp "$archive" install-rust.sh "$stage/"
+          rm -rf "$out" target/dmg
+          mkdir -p "$out" "$stage"
+          cp "target/release-package/$archive" install-rust.sh "$out/"
+          # The DMG.
+          cp "$out/$archive" install-rust.sh "$stage/"
           cp "scripts/release/macos-dmg/Install Prime Agent.command" "scripts/release/macos-dmg/README.txt" "$stage/"
           chmod +x "$stage/Install Prime Agent.command"
-          dmg="target/dmg/Prime-Agent-Rubiks-arm64.dmg"
-          hdiutil create -volname "Prime Agent (Rubiks)" -srcfolder "$stage" -ov -format UDZO "$dmg"
-          ls -lh "$dmg"
-          echo "path=$dmg" >> "$GITHUB_OUTPUT"
-          echo "archive=$(basename "$archive")" >> "$GITHUB_OUTPUT"
+          hdiutil create -volname "Prime Agent (Rubiks) $VERSION" -srcfolder "$stage" -ov -format UDZO \
+            "$out/Prime-Agent-Rubiks-arm64.dmg"
+          # The one-line installer, with this build's archive name filled in.
+          sed "s/__RUBIKS_ARCHIVE__/${archive}/" scripts/release/rubiks-install.sh > "$out/install.sh"
+          sh -n "$out/install.sh"
+          # The checksum and the channel manifest (`prime-agent update --check`).
+          sha="$(shasum -a 256 "$out/$archive" | cut -d' ' -f1)"
+          echo "$sha  $archive" > "$out/SHA256SUMS"
+          printf '{"version": "%s", "binaries": [{"platform": "darwin-arm64", "file": "%s", "sha256": "%s"}]}\n' \
+            "$VERSION" "$archive" "$sha" > "$out/latest.json"
+          python3 -m json.tool "$out/latest.json"
+          ls -lh "$out"
+          echo "dir=$out" >> "$GITHUB_OUTPUT"
 
-      - name: Upload the DMG as a workflow artifact
+      - name: Keep the files as a workflow artifact
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
-          name: Prime-Agent-Rubiks-arm64-${{ github.sha }}
-          path: ${{ steps.dmg.outputs.path }}
+          name: prime-agent-rubiks-${{ steps.version.outputs.version }}
+          path: ${{ steps.files.outputs.dir }}
           retention-days: 30
           if-no-files-found: error
 
-      - name: Publish the harness-latest release
+      - name: Publish the release
         if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
-          DMG: ${{ steps.dmg.outputs.path }}
-          ARCHIVE: ${{ steps.dmg.outputs.archive }}
+          VERSION: ${{ steps.version.outputs.version }}
+          DIR: ${{ steps.files.outputs.dir }}
         run: |
-          # The one-line installer, with this build's archive name filled in.
-          sed "s/__RUBIKS_ARCHIVE__/${ARCHIVE}/" scripts/release/rubiks-install.sh > target/dmg/install.sh
-          sh -n target/dmg/install.sh
-          gh release delete harness-latest --yes --cleanup-tag || true
-          gh release create harness-latest "$DMG" \
-            "target/release-package/${ARCHIVE}" install-rust.sh target/dmg/install.sh \
+          gh release create "v${VERSION}" "$DIR"/* \
             --target "$GITHUB_SHA" \
-            --prerelease \
-            --title "Prime Agent (Rubiks) — latest main build" \
-            --notes "Built from ${GITHUB_SHA} (${ARCHIVE}) by run ${GITHUB_RUN_NUMBER}. Apple silicon only. Install from a terminal: curl -fsSL https://github.com/${GITHUB_REPOSITORY}/releases/download/harness-latest/install.sh | sh — or open the DMG and double-click Install Prime Agent (first time: right-click → Open)."
+            --latest \
+            --title "Prime Agent (Rubiks) ${VERSION}" \
+            --notes "Built from ${GITHUB_SHA}. Apple silicon only.
+
+          Install or update from a terminal:
+
+              curl -fsSL https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/install.sh | sh
+
+          or open Prime-Agent-Rubiks-arm64.dmg and double-click Install Prime Agent (first time: right-click → Open). The Rubiks IDE updates Prime Agent on its own; from a terminal, \`prime-agent update\` installs the newest release."
+          # The rolling pre-release this workflow used to publish.
+          gh release delete harness-latest --yes --cleanup-tag || true

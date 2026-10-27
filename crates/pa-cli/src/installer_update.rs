@@ -1,6 +1,6 @@
 //! The `prime-agent update` body: the TS->Rust migration path. One step —
-//! the update fetches the update channel's installer (stable: the official
-//! domain's `https://app.primeintellect.ai/prime-agent/install.sh`;
+//! the update fetches the update channel's installer (stable: the newest
+//! Rubiks release's `https://github.com/rubiksworkspace/rubiks-harness/releases/latest/download/install.sh`;
 //! nightly: the download base's `install-beta.sh`; never a GitHub raw or
 //! workflow URL) and runs it; the script uninstalls the
 //! TypeScript version, installs the latest Rust build of the update
