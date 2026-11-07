@@ -1,0 +1,33 @@
+[package]
+name = "pa-uhp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Unified Harness Protocol server that runs Prime Agent tasks."
+
+[dependencies]
+anyhow = { workspace = true }
+# The hand-written HTTP surface: SSE needs a body that outlives the handler and
+# no routing framework is worth a dependency for a dozen fixed routes. All of
+# these are already in Cargo.lock through the provider clients.
+bytes = "1"
+futures = { workspace = true }
+http-body-util = "0.1"
+hyper = { version = "1", features = ["http1", "server"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+serde_json = { workspace = true }
+# Constant-time bearer token comparison; already in Cargo.lock through rustls.
+subtle = "2"
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+uuid = { version = "1", features = ["v4"] }
+
+[target.'cfg(unix)'.dependencies]
+# Signals the task's process group; the workspace forbids unsafe libc calls here.
+nix = { version = "0.29", features = ["signal", "process"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

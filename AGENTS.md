@@ -195,7 +195,8 @@ The table summarizes each crate's current direct workspace dependencies:
 | `pa-core` | Session engine, tools, skills, kernel, settings | `pa-types`, `pa-ai`, `pa-models`, `pa-agent`, `pa-telemetry` |
 | `pa-daemon` | Supervisor, workers, wire protocol | `pa-types`, `pa-core`, `pa-agent`, `pa-ai`, `pa-telemetry`, `pa-models` |
 | `pa-tui` | Terminal UI, daemon-wire client | `pa-types` |
-| `pa-cli` | `prime-agent` binary, composition root | `pa-types`, `pa-core`, `pa-ai`, `pa-agent`, `pa-daemon`, `pa-tui`, `pa-telemetry` |
+| `pa-uhp` | Unified Harness Protocol HTTP server, runs tasks as child processes | none |
+| `pa-cli` | `prime-agent` binary, composition root | `pa-types`, `pa-core`, `pa-ai`, `pa-agent`, `pa-daemon`, `pa-tui`, `pa-uhp`, `pa-telemetry` |
 
 Layering rules:
 

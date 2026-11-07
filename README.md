@@ -123,6 +123,26 @@ prime-agent update [--force]         # Update Prime Agent
 prime-agent shutdown [--force]       # Stop every agent, worker, and background service
 ```
 
+## Serve over the Unified Harness Protocol
+
+`prime-agent serve uhp` runs Prime Agent behind [UHP](https://github.com/HarnessRouter/harnessrouter) `2026-10-19`, Core class, so any UHP client can send it tasks over HTTP. It streams progress, continues sessions, and cancels running work:
+
+```bash
+export PRIME_AGENT_UHP_KEY="$(openssl rand -hex 32)"
+prime-agent serve uhp --port 8787 --model deepseek-v4-flash
+```
+
+```bash
+curl -N http://127.0.0.1:8787/v1/responses \
+  -H "Authorization: Bearer $PRIME_AGENT_UHP_KEY" -H "Content-Type: application/json" \
+  -d '{"input": "Summarise README.md in three bullets.", "stream": true}'
+```
+
+Each session works in its own directory under `~/.prime/agent/uhp/workspaces`; pass `--workspace <dir>` to run every session in one project.
+
+> [!WARNING]
+> Anyone holding the token can run anything the agent can, with your user permissions. The server binds to loopback and has no TLS: to reach it from another machine, put a TLS reverse proxy in front and pass `--allow-remote`.
+
 ## Built for Long-Running Work
 Prime Agent is built for long-running work, especially for evaluations in research. These features are available in the TUI, and when run autonomously.
 

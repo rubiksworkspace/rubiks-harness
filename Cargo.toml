@@ -9,6 +9,7 @@ members = [
     "crates/pa-core",
     "crates/pa-daemon",
     "crates/pa-tui",
+    "crates/pa-uhp",
     "crates/pa-cli",
     # Zed's CLI, vendored under GPL-3.0-or-later; see vendor/zed-cli/README.md.
     "vendor/zed-cli/crates/cli",

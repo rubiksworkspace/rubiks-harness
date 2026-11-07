@@ -241,6 +241,30 @@ pub const COMMAND_SPECS: &[CommandSpec] = &[
         "Export a saved session to HTML",
     ),
     CommandSpec::new(
+        &["serve"],
+        "serve uhp [options]",
+        "Serve Prime Agent over a network protocol",
+    )
+    .description(
+        "Runs Prime Agent behind the Unified Harness Protocol, so any UHP client can send it \
+tasks over HTTP. Clients authenticate with the bearer token in PRIME_AGENT_UHP_KEY, and a client \
+holding it can run anything the agent can.",
+    )
+    .examples(&["serve uhp --port 8787 --model deepseek-v4-flash"]),
+    CommandSpec::new(
+        &["serve", "uhp"],
+        "serve uhp [--host HOST] [--port PORT] [--workspace DIR] [--provider ID] [--model ID] [--allow-remote]",
+        "Serve the Unified Harness Protocol over HTTP",
+    )
+    .options(&[
+        "--host <host>       Address to bind (default 127.0.0.1)",
+        "--port <port>       Port to bind (default 8787, 0 picks a free one)",
+        "--workspace <dir>   Run every session here (default: one directory per session)",
+        "--provider <id>     Provider preferred when several carry a model",
+        "--model <id>        Default model for tasks that name none",
+        "--allow-remote      Bind off loopback; put a TLS proxy in front",
+    ]),
+    CommandSpec::new(
         &["data"],
         "data [sessions|show|harness|research|blob|stores]",
         "Browse saved sessions and harness data",
