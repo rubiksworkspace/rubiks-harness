@@ -38,6 +38,16 @@ Prime Agent is an open-source coding and research agent for general and long-run
 - The **[Recursive Language Model (RLM)](https://www.primeintellect.ai/blog/rlm)** treats context as variables (*prompt-as-a-variable*) and tools like recursive subagents as function calls (*programmatic tool /sub-agent calling*) inside a persistent REPL.
 - The **[Continual Harness](https://arxiv.org/abs/2605.09998)** stores supplemental prompts, memories, skill descriptions, and reusable subagent specifications as durable state that Prime Agent can refine through small, evidence-backed updates, local to the session by default.
 
+## About this build
+
+This repository is **Prime Agent (Rubiks)**, a modified version of
+[Prime Agent](https://github.com/PrimeIntellect-ai/prime-agent) by Prime Intellect, maintained for
+[Rubiks Workspace](https://rubiksworkspace.com) and the
+[Rubiks IDE](https://github.com/rubiksworkspace/Rubiks-IDE). It is not made or supported by Prime
+Intellect, so please report problems
+[here](https://github.com/rubiksworkspace/rubiks-harness/issues). The sections below come from the
+upstream project except where they mention Rubiks.
+
 ## Install
 
 Install the latest Rubiks build (Apple silicon) with the one-command installer:
@@ -129,13 +139,15 @@ Start with a GitHub Discussion for [general questions](https://github.com/PrimeI
 
 ## License
 
-This branch of Prime Agent is released under the [GNU General Public License v3.0 or later](LICENSE)
+Prime Agent (Rubiks) is released under the [GNU General Public License v3.0 or later](LICENSE)
 (GPL-3.0-or-later), because it includes Zed's command-line interface, which is GPL-3.0-or-later
 (see [vendor/zed-cli](vendor/zed-cli/README.md)).
 
 The Prime Agent code it builds on was released under the MIT License; that notice is kept in
 [LICENSE-MIT](LICENSE-MIT) as the MIT License requires. Parts of the vendored Zed code are
 Apache-2.0 ([vendor/zed-cli/LICENSE-APACHE](vendor/zed-cli/LICENSE-APACHE)).
+
+[NOTICE](NOTICE) records the origin of this code and of the changes made to it.
 
 ## Citation
 

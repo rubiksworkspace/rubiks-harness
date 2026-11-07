@@ -1,0 +1,22 @@
+Prime Agent (Rubiks)
+https://github.com/rubiksworkspace/rubiks-harness
+
+Prime Agent (Rubiks) is a modified version of Prime Agent
+(https://github.com/PrimeIntellect-ai/prime-agent), Copyright (c) 2025-2026
+Prime Intellect Ltd., released under the MIT License (see LICENSE-MIT).
+
+The Rubiks Workspace authors have modified this code, starting on 2026-10-13.
+The changes keep telemetry off unless it is turned on, add the
+`prime-agent data` command and the research log, include Zed's command-line
+interface, add provider retries and other unattended-run behaviour, add the
+run-tests skill and the SWE-bench Pro benchmark, and publish and update from
+this repository's GitHub releases. The git history records each change and its
+date.
+
+Because it includes Zed's command-line interface, the whole is released under
+GPL-3.0-or-later (see LICENSE). vendor/zed-cli comes from Rubiks IDE, a modified
+version of Zed (https://github.com/zed-industries/zed), Copyright Zed Industries,
+Inc., under GPL-3.0-or-later with Apache-2.0 parts (see its LICENSE files).
+vendor/crossterm keeps its own license (see vendor/crossterm/LICENSE).
+
+Prime Agent (Rubiks) is not made or supported by Prime Intellect Ltd.

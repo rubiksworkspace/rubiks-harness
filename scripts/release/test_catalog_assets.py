@@ -155,6 +155,8 @@ class SyntheticRepo:
         (root / "skills").mkdir(parents=True)
         (root / "skills" / "skill.md").write_text("# skill\n")
         (root / "LICENSE").write_text("license\n")
+        (root / "LICENSE-MIT").write_text("mit license\n")
+        (root / "NOTICE").write_text("notice\n")
         (root / "README.md").write_text("readme\n")
         runtime = root / "runtime"
         runtime.mkdir()

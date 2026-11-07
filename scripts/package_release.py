@@ -15,7 +15,7 @@ runtime (PI_PACKAGE_DIR override, else the directory of the executable):
   prime-agent            the binary (mode 755; prime-agent.exe on win32-x64)
   package.json           version manifest ({"version": <version>, piConfig})
   README.md
-  LICENSE
+  LICENSE, LICENSE-MIT, NOTICE
   models.bundled.json       bundled catalog assets (spec §3.2 layer 2),
   mcp-services.bundled.json staged beside the executable
   prime-agent-runtime/   the kernel runtime sidecar (dev caches excluded)
@@ -93,6 +93,8 @@ REQUIRED_FILES = (
     "package.json",
     "README.md",
     "LICENSE",
+    "LICENSE-MIT",
+    "NOTICE",
     "models.bundled.json",
     "mcp-services.bundled.json",
     "prime-agent-runtime/pyproject.toml",
@@ -234,9 +236,12 @@ def stage(root, binary, version, stage_dir, catalog_assets, binary_name):
         else:
             copy_tree(root / name, stage_dir / name)
     shutil.copy2(root / "README.md", stage_dir / "README.md")
-    # The license ships with the binary (TS binaryAssets keeps LICENSE beside
-    # it; the release pipeline packages it the same way).
-    shutil.copy2(root / "LICENSE", stage_dir / "LICENSE")
+    # The licenses ship with the binary (TS binaryAssets keeps LICENSE beside
+    # it; the release pipeline packages it the same way). LICENSE-MIT is the
+    # upstream notice the MIT License requires in every copy; NOTICE says what
+    # this build is and what it changed.
+    for name in ("LICENSE", "LICENSE-MIT", "NOTICE"):
+        shutil.copy2(root / name, stage_dir / name)
     # The version manifest: the binary's runtime package.json (TS
     # setBinaryVersion stamps the version here; cargo embeds it, so the
     # manifest records the pin and the staged binary must agree with it).
