@@ -1,0 +1,23 @@
+# Readiness checks for review mode. This file defines what ready means for this
+# project: edit, remove or add checks freely. Review mode never re-detects it.
+# The checks below were detected on 2026-11-09; confirm or correct them.
+
+[[check]]
+name = "Format"
+command = "cargo fmt --all --check"
+source = "detected from Cargo.toml"
+
+[[check]]
+name = "Lint"
+command = "cargo clippy --workspace --all-targets -- -D warnings"
+source = "detected from Cargo.toml"
+
+[[check]]
+name = "Tests"
+command = "cargo test --workspace"
+source = "detected from Cargo.toml"
+
+[[check]]
+name = "Project check"
+command = "make check"
+source = "detected from Makefile"

@@ -157,6 +157,8 @@ pub enum AcpSessionUpdate {
         status: AcpToolStatus,
         #[serde(rename = "rawInput")]
         raw_input: Value,
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        locations: Vec<ToolCallLocation>,
     },
     /// A tool call progressed or finished.
     #[serde(rename = "tool_call_update")]
@@ -167,6 +169,8 @@ pub enum AcpSessionUpdate {
         status: Option<AcpToolStatus>,
         #[serde(skip_serializing_if = "Option::is_none")]
         content: Option<Vec<ToolCallContent>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        locations: Option<Vec<ToolCallLocation>>,
         #[serde(rename = "_meta", skip_serializing_if = "Option::is_none")]
         meta: Option<Value>,
     },
@@ -211,21 +215,39 @@ impl TextBlock {
     }
 }
 
-/// `{ "type": "content", "content": { ... } }` — the tool-call update shape.
+/// One item of tool-call output: text, or a file change the client can render
+/// as a diff instead of relying on the agent's description of it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ToolCallContent {
-    #[serde(rename = "type")]
-    pub kind: String,
-    pub content: TextBlock,
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum ToolCallContent {
+    Content {
+        content: TextBlock,
+    },
+    Diff {
+        path: String,
+        #[serde(rename = "oldText")]
+        old_text: String,
+        #[serde(rename = "newText")]
+        new_text: String,
+    },
 }
 
 impl ToolCallContent {
     pub fn new(text: impl Into<String>) -> Self {
-        ToolCallContent {
-            kind: "content".to_string(),
+        ToolCallContent::Content {
             content: TextBlock::new(text),
         }
     }
+}
+
+/// A file a tool call touches, so a client can follow the agent to it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolCallLocation {
+    /// Absolute, as ACP requires.
+    pub path: String,
+    /// Zero-based, which is how Zed reads it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub line: Option<u32>,
 }
 
 /// A prompt whose blocks could not be admitted.
@@ -513,6 +535,7 @@ mod tests {
             kind: AcpToolKind::Execute,
             status: AcpToolStatus::InProgress,
             raw_input: json!({ "code": "1+1" }),
+            locations: Vec::new(),
         };
         let value = call.to_bare_value();
         assert_eq!(value["sessionUpdate"], "tool_call");
@@ -522,6 +545,7 @@ mod tests {
             tool_call_id: "t1".into(),
             status: Some(AcpToolStatus::Completed),
             content: Some(vec![ToolCallContent::new("42")]),
+            locations: None,
             meta: None,
         };
         let value = update.to_bare_value();

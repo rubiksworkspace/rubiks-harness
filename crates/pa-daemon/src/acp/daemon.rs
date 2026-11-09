@@ -1179,7 +1179,7 @@ async fn handle_session_new(
         cancel_task: None,
         turn: None,
         assistant_stop_reason: None,
-        mapping: WireMappingState::default(),
+        mapping: WireMappingState::for_cwd(options.actual_cwd.clone()),
         observed_children: std::collections::HashSet::new(),
     };
     // The ACP MCP servers ride the wire command, not a local manager.

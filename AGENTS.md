@@ -26,6 +26,12 @@ Every contributor (human or agent) must read this before working on this repo.
   it to `~/prime-agent`, the conventional location the parity scripts and code fall back
   to; tooling that honors an override reads `PA_TS_REFERENCE`.
 
+## Project map
+
+`.rubiks/map.md` has one row per source file: path, area, language, lines, purpose, main
+symbols, tests and last change. Search it before exploring the tree. Regenerate it with
+`python3 scripts/project_map.py`; `--check` reports whether it matches the current commit.
+
 ## Style and structure
 
 - Workspace crates are prefixed `pa-`. The hard ownership rules: one owned area per crate,

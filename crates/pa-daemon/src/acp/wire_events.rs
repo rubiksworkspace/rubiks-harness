@@ -7,23 +7,73 @@
 //! `agent_begin/end`, `session_action_update`) map to nothing, exactly like
 //! the TS switch's default arm.
 
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+
 use serde::Deserialize as _;
 use serde_json::{json, Value};
 
 use super::meta::{prime_agent_meta, PrimeAgentCompactionMeta, PrimeAgentSessionMeta};
-use super::types::{AcpSessionUpdate, AcpToolKind, AcpToolStatus, TextBlock};
+use super::types::{
+    AcpSessionUpdate, AcpToolKind, AcpToolStatus, TextBlock, ToolCallContent, ToolCallLocation,
+};
+
+/// An `edit` call between start and end: the end event doesn't repeat its args.
+#[derive(Debug)]
+struct PendingEdit {
+    path: String,
+    replacements: Vec<(String, String)>,
+}
 
 /// Correlates streamed chunks with their owning assistant message (the
-/// daemon stream carries the delta on `assistantMessageEvent`) and bash
-/// output chunks with the run that produced them.
+/// daemon stream carries the delta on `assistantMessageEvent`), bash
+/// output chunks with the run that produced them, and edit results with
+/// the call that asked for them.
 #[derive(Debug, Default)]
 pub struct WireMappingState {
     next_assistant_message_sequence: u64,
     active_assistant_message_id: Option<String>,
     active_bash_run_id: Option<String>,
+    cwd: PathBuf,
+    pending_edits: HashMap<String, PendingEdit>,
 }
 
 impl WireMappingState {
+    /// `cwd` resolves the relative paths model tool calls use.
+    pub fn for_cwd(cwd: PathBuf) -> Self {
+        WireMappingState {
+            cwd,
+            ..Default::default()
+        }
+    }
+
+    /// Remember an `edit` call's target and return where it points.
+    fn start_edit(&mut self, tool_call_id: &str, args: &Value) -> Vec<ToolCallLocation> {
+        let Some(path) = args.get("path").and_then(Value::as_str) else {
+            return Vec::new();
+        };
+        let path = self.cwd.join(Path::new(path)).display().to_string();
+        let replacement = |edit: &Value| {
+            Some((
+                edit.get("oldText")?.as_str()?.to_string(),
+                edit.get("newText")?.as_str()?.to_string(),
+            ))
+        };
+        // The tool also accepts the legacy top-level oldText/newText shape.
+        let replacements = match args.get("edits").and_then(Value::as_array) {
+            Some(edits) => edits.iter().filter_map(replacement).collect(),
+            None => replacement(args).into_iter().collect(),
+        };
+        self.pending_edits.insert(
+            tool_call_id.to_string(),
+            PendingEdit {
+                path: path.clone(),
+                replacements,
+            },
+        );
+        vec![ToolCallLocation { path, line: None }]
+    }
+
     fn start_assistant_message(&mut self) -> String {
         self.next_assistant_message_sequence += 1;
         let id = format!(
@@ -149,7 +199,13 @@ pub fn wire_updates(event: &Value, state: &mut WireMappingState) -> Vec<AcpSessi
             } else {
                 tool_name.clone()
             };
+            let locations = if tool_name == "edit" {
+                state.start_edit(&tool_call_id, &args)
+            } else {
+                Vec::new()
+            };
             vec![AcpSessionUpdate::ToolCall {
+                locations,
                 tool_call_id,
                 title,
                 kind: AcpToolKind::of_tool(&tool_name),
@@ -172,6 +228,31 @@ pub fn wire_updates(event: &Value, state: &mut WireMappingState) -> Vec<AcpSessi
                 .unwrap_or(false);
             let text = tool_result_text(event.get("result"));
             let rich = ipython_rich_output(event.get("result"));
+            // A failed edit changed nothing, so it gets no diff.
+            let edit = state
+                .pending_edits
+                .remove(&tool_call_id)
+                .filter(|_| !is_error);
+            let mut content: Vec<ToolCallContent> = edit
+                .iter()
+                .flat_map(|edit| {
+                    edit.replacements
+                        .iter()
+                        .map(|(old_text, new_text)| ToolCallContent::Diff {
+                            path: edit.path.clone(),
+                            old_text: old_text.clone(),
+                            new_text: new_text.clone(),
+                        })
+                })
+                .collect();
+            content.extend(text.map(ToolCallContent::new));
+            // The tool reports a one-based line.
+            let changed_line = event
+                .get("result")
+                .and_then(|result| result.get("details"))
+                .and_then(|details| details.get("firstChangedLine"))
+                .and_then(Value::as_u64)
+                .and_then(|line| u32::try_from(line.saturating_sub(1)).ok());
             let update = AcpSessionUpdate::ToolCallUpdate {
                 tool_call_id,
                 status: Some(if is_error {
@@ -179,7 +260,13 @@ pub fn wire_updates(event: &Value, state: &mut WireMappingState) -> Vec<AcpSessi
                 } else {
                     AcpToolStatus::Completed
                 }),
-                content: text.map(|text| vec![super::types::ToolCallContent::new(text)]),
+                content: (!content.is_empty()).then_some(content),
+                locations: edit.map(|edit| {
+                    vec![ToolCallLocation {
+                        path: edit.path,
+                        line: changed_line,
+                    }]
+                }),
                 meta: rich.map(|rich| {
                     prime_agent_meta(&PrimeAgentSessionMeta {
                         ipython: Some(rich),
@@ -208,6 +295,7 @@ pub fn wire_updates(event: &Value, state: &mut WireMappingState) -> Vec<AcpSessi
                 kind: AcpToolKind::Execute,
                 status: AcpToolStatus::InProgress,
                 raw_input: json!({ "command": command }),
+                locations: Vec::new(),
             }]
         }
         "bash_output" => {
@@ -219,7 +307,8 @@ pub fn wire_updates(event: &Value, state: &mut WireMappingState) -> Vec<AcpSessi
             vec![AcpSessionUpdate::ToolCallUpdate {
                 tool_call_id: bash_tool_call_id(state.active_bash_run_id.clone()),
                 status: Some(AcpToolStatus::InProgress),
-                content: Some(vec![super::types::ToolCallContent::new(chunk)]),
+                content: Some(vec![ToolCallContent::new(chunk)]),
+                locations: None,
                 meta: None,
             }]
         }
@@ -244,6 +333,7 @@ pub fn wire_updates(event: &Value, state: &mut WireMappingState) -> Vec<AcpSessi
                     AcpToolStatus::Failed
                 }),
                 content: None,
+                locations: None,
                 meta: None,
             }]
         }
@@ -619,6 +709,81 @@ mod tests {
         assert_eq!(value["sessionUpdate"], "tool_call_update");
         assert_eq!(value["status"], "completed");
         assert_eq!(value["content"][0]["content"]["text"], "1\n");
+    }
+
+    #[test]
+    fn an_edit_reports_where_it_points_and_what_it_changed() {
+        let mut state = WireMappingState::for_cwd(PathBuf::from("/repo"));
+        let started = wire_updates(
+            &json!({
+                "type": "tool_execution_start",
+                "toolCallId": "call-1",
+                "toolName": "edit",
+                "args": {
+                    "path": "src/a.rs",
+                    "edits": [{ "oldText": "one", "newText": "two" }],
+                },
+            }),
+            &mut state,
+        );
+        assert_eq!(
+            serde_json::to_value(&started[0]).unwrap()["locations"],
+            json!([{ "path": "/repo/src/a.rs" }])
+        );
+        let ended = wire_updates(
+            &json!({
+                "type": "tool_execution_end",
+                "toolCallId": "call-1",
+                "result": {
+                    "content": [{ "type": "text", "text": "Successfully replaced" }],
+                    "details": { "diff": "-one\n+two", "firstChangedLine": 3 },
+                },
+                "isError": false,
+            }),
+            &mut state,
+        );
+        let value = serde_json::to_value(&ended[0]).unwrap();
+        assert_eq!(
+            value["content"][0],
+            json!({
+                "type": "diff",
+                "path": "/repo/src/a.rs",
+                "oldText": "one",
+                "newText": "two",
+            })
+        );
+        assert_eq!(
+            value["locations"],
+            json!([{ "path": "/repo/src/a.rs", "line": 2 }])
+        );
+    }
+
+    #[test]
+    fn a_failed_edit_reports_no_diff() {
+        let mut state = WireMappingState::for_cwd(PathBuf::from("/repo"));
+        wire_updates(
+            &json!({
+                "type": "tool_execution_start",
+                "toolCallId": "call-1",
+                "toolName": "edit",
+                "args": { "path": "/abs/a.rs", "oldText": "one", "newText": "two" },
+            }),
+            &mut state,
+        );
+        let ended = wire_updates(
+            &json!({
+                "type": "tool_execution_end",
+                "toolCallId": "call-1",
+                "result": { "content": [{ "type": "text", "text": "no match" }] },
+                "isError": true,
+            }),
+            &mut state,
+        );
+        let value = serde_json::to_value(&ended[0]).unwrap();
+        assert_eq!(value["content"][0]["type"], "content");
+        assert_eq!(value["content"].as_array().unwrap().len(), 1);
+        assert!(value.get("locations").is_none());
+        assert!(state.pending_edits.is_empty());
     }
 
     #[test]
